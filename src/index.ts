@@ -13,7 +13,7 @@ import { ingestQueue } from './lib/queues';
 import { isLoopMessage } from './lib/loopFilter';
 import { RouterWorker } from './workers/router';
 import { DeliveryWorkerManager } from './lib/deliveryWorkerManager';
-import { bridgeService, setDiscordClient } from './lib/bridge';
+import { bridgeService, setDiscordClient, setFluxerClient } from './lib/bridge';
 
 const log = createChildLogger('janus');
 
@@ -122,6 +122,8 @@ class Janus {
 
   private async startFluxer(): Promise<void> {
     this.fluxerClient = new FluxerClient();
+
+    setFluxerClient(this.fluxerClient);
 
     this.fluxerClient.on('message', async (event) => {
       const isLoop = await isLoopMessage(event.content, event.author.name);

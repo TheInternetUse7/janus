@@ -19,6 +19,8 @@ model BridgePair {
   // Fluxer Side
   fluxerGuildId     String?
   fluxerChannelId   String
+  fluxerWebhookId   String?
+  fluxerWebhookToken String?
 
   // Settings
   isActive          Boolean  @default(true)

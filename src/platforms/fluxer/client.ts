@@ -1,4 +1,4 @@
-import { Client, Events, Routes } from '@fluxerjs/core';
+import { Client, Events, Routes, Webhook } from '@fluxerjs/core';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../lib/logger';
 import { bridgeService } from '../../lib/bridge';
@@ -26,9 +26,19 @@ export interface FluxerMessage {
   editedAt: string | null;
 }
 
+interface PendingWebhookMessage {
+  channelId: string;
+  content: string;
+  username: string;
+  timestamp: number;
+  resolve: (messageId: string) => void;
+  timeout: NodeJS.Timeout;
+}
+
 export class FluxerClient extends EventEmitter {
   private client: Client;
   private ready = false;
+  private pendingWebhookMessages: Map<string, PendingWebhookMessage> = new Map();
 
   constructor() {
     super();
@@ -50,11 +60,25 @@ export class FluxerClient extends EventEmitter {
     const getGuildId = (data: any) => data.guildId || data.guild_id;
 
     this.client.on(Events.MessageCreate, async (data: any) => {
-      if (data.author?.bot) return;
-      if (!data.content) return;
-
       const channelId = getChannelId(data);
       const guildId = getGuildId(data);
+
+      // Check if this message matches a pending webhook send
+      const pendingKey = this.findPendingWebhookMessage(channelId, data.content, data.author?.username);
+      if (pendingKey) {
+        const pending = this.pendingWebhookMessages.get(pendingKey);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingWebhookMessages.delete(pendingKey);
+          pending.resolve(data.id);
+          log.debug({ messageId: data.id, channelId }, 'Captured webhook message ID');
+          // Don't emit this message as a regular message event since it's our own webhook
+          return;
+        }
+      }
+
+      if (data.author?.bot) return;
+      if (!data.content) return;
 
       const fluxerMessage: FluxerMessage = {
         id: data.id,
@@ -239,6 +263,80 @@ export class FluxerClient extends EventEmitter {
       return { id: (webhook as any).id, token: (webhook as any).token ?? '' };
     } catch (error) {
       log.error({ channelId, error }, 'Failed to create webhook');
+      return null;
+    }
+  }
+
+  private findPendingWebhookMessage(channelId: string, content: string, username: string): string | null {
+    // Look for a pending webhook message that matches this channel, content, and username
+    for (const [key, pending] of this.pendingWebhookMessages.entries()) {
+      if (
+        pending.channelId === channelId &&
+        pending.content === content &&
+        pending.username === username
+      ) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  async sendWebhook(
+    webhookId: string,
+    webhookToken: string,
+    content: string,
+    username: string,
+    avatarUrl: string | null,
+    channelId?: string
+  ): Promise<string | null> {
+    try {
+      const webhook = Webhook.fromToken(this.client, webhookId, webhookToken);
+
+      const payload: any = {
+        content,
+        username,
+      };
+
+      if (avatarUrl) {
+        payload.avatar_url = avatarUrl;
+      }
+
+      // Create a promise that will be resolved when we receive the message event
+      const messageIdPromise = channelId
+        ? new Promise<string | null>((resolve) => {
+          const key = `${channelId}-${Date.now()}-${Math.random()}`;
+          const timeout = setTimeout(() => {
+            this.pendingWebhookMessages.delete(key);
+            log.warn({ webhookId, channelId }, 'Timeout waiting for webhook message ID');
+            resolve(null);
+          }, 5000); // 5 second timeout
+
+          this.pendingWebhookMessages.set(key, {
+            channelId,
+            content,
+            username,
+            timestamp: Date.now(),
+            resolve,
+            timeout,
+          });
+        })
+        : Promise.resolve(null);
+
+      // Send the webhook (returns void)
+      await webhook.send(payload);
+
+      // Wait for the message event to capture the ID
+      const messageId = await messageIdPromise;
+
+      if (messageId) {
+        log.debug({ webhookId, username, messageId }, 'Webhook sent successfully with captured ID');
+      } else {
+        log.debug({ webhookId, username }, 'Webhook sent successfully (no ID captured)');
+      }
+
+      return messageId;
+    } catch (error) {
+      log.error({ webhookId, error }, 'Failed to send webhook');
       return null;
     }
   }

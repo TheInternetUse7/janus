@@ -4,13 +4,19 @@ import { prisma } from './database';
 import { createChildLogger } from './logger';
 import { BridgePair } from '@prisma/client';
 import { DiscordClient } from '../platforms/discord/client';
+import { FluxerClient } from '../platforms/fluxer/client';
 
 const log = createChildLogger('bridge-service');
 
 let discordClient: DiscordClient | null = null;
+let fluxerClient: FluxerClient | null = null;
 
 export function setDiscordClient(client: DiscordClient): void {
   discordClient = client;
+}
+
+export function setFluxerClient(client: FluxerClient): void {
+  fluxerClient = client;
 }
 
 export interface BridgeEvents {
@@ -22,15 +28,28 @@ export interface BridgeEvents {
 export class BridgeService extends EventEmitter {
   async createBridge(discordChannelId: string, fluxerChannelId: string, discordGuildId: string, fluxerGuildId?: string): Promise<BridgePair> {
     try {
-      let webhookId: string | null = null;
-      let webhookToken: string | null = null;
+      let discordWebhookId: string | null = null;
+      let discordWebhookToken: string | null = null;
+      let fluxerWebhookId: string | null = null;
+      let fluxerWebhookToken: string | null = null;
 
+      // Create Discord webhook
       if (discordClient) {
         const webhook = await discordClient.createWebhook(discordChannelId, 'Janus Bridge');
         if (webhook) {
-          webhookId = webhook.id;
-          webhookToken = webhook.token;
-          log.info({ discordChannelId, webhookId }, 'Created Discord webhook for bridge');
+          discordWebhookId = webhook.id;
+          discordWebhookToken = webhook.token;
+          log.info({ discordChannelId, webhookId: discordWebhookId }, 'Created Discord webhook for bridge');
+        }
+      }
+
+      // Create Fluxer webhook
+      if (fluxerClient) {
+        const webhook = await fluxerClient.createWebhook(fluxerChannelId, 'Janus Bridge');
+        if (webhook) {
+          fluxerWebhookId = webhook.id;
+          fluxerWebhookToken = webhook.token;
+          log.info({ fluxerChannelId, webhookId: fluxerWebhookId }, 'Created Fluxer webhook for bridge');
         }
       }
 
@@ -40,8 +59,10 @@ export class BridgeService extends EventEmitter {
           fluxerChannelId,
           discordGuildId,
           fluxerGuildId: fluxerGuildId || null,
-          discordWebhookId: webhookId,
-          discordWebhookToken: webhookToken,
+          discordWebhookId,
+          discordWebhookToken,
+          fluxerWebhookId,
+          fluxerWebhookToken,
         },
       });
       log.info({ bridgeId: bridge.id }, 'Bridge created');
@@ -122,31 +143,59 @@ export class BridgeService extends EventEmitter {
         return null;
       }
 
-      if (bridge.discordWebhookId && bridge.discordWebhookToken) {
-        log.debug({ bridgeId }, 'Bridge already has webhook credentials');
+      const needsDiscordWebhook = !bridge.discordWebhookId || !bridge.discordWebhookToken;
+      const needsFluxerWebhook = !bridge.fluxerWebhookId || !bridge.fluxerWebhookToken;
+
+      if (!needsDiscordWebhook && !needsFluxerWebhook) {
+        log.debug({ bridgeId }, 'Bridge already has all webhook credentials');
         return bridge;
       }
 
-      if (!discordClient) {
-        log.error({ bridgeId }, 'Discord client not available for webhook repair');
-        return null;
+      const updateData: any = {};
+
+      // Repair Discord webhook if needed
+      if (needsDiscordWebhook) {
+        if (!discordClient) {
+          log.error({ bridgeId }, 'Discord client not available for webhook repair');
+        } else {
+          const webhook = await discordClient.createWebhook(bridge.discordChannelId, 'Janus Bridge');
+          if (webhook) {
+            updateData.discordWebhookId = webhook.id;
+            updateData.discordWebhookToken = webhook.token;
+            log.info({ bridgeId, webhookId: webhook.id }, 'Repaired Discord webhook');
+          } else {
+            log.error({ bridgeId, discordChannelId: bridge.discordChannelId }, 'Failed to create Discord webhook for bridge repair');
+          }
+        }
       }
 
-      const webhook = await discordClient.createWebhook(bridge.discordChannelId, 'Janus Bridge');
-      if (!webhook) {
-        log.error({ bridgeId, discordChannelId: bridge.discordChannelId }, 'Failed to create webhook for bridge repair');
-        return null;
+      // Repair Fluxer webhook if needed
+      if (needsFluxerWebhook) {
+        if (!fluxerClient) {
+          log.error({ bridgeId }, 'Fluxer client not available for webhook repair');
+        } else {
+          const webhook = await fluxerClient.createWebhook(bridge.fluxerChannelId, 'Janus Bridge');
+          if (webhook) {
+            updateData.fluxerWebhookId = webhook.id;
+            updateData.fluxerWebhookToken = webhook.token;
+            log.info({ bridgeId, webhookId: webhook.id }, 'Repaired Fluxer webhook');
+          } else {
+            log.error({ bridgeId, fluxerChannelId: bridge.fluxerChannelId }, 'Failed to create Fluxer webhook for bridge repair');
+          }
+        }
+      }
+
+      // Only update if we have changes
+      if (Object.keys(updateData).length === 0) {
+        log.warn({ bridgeId }, 'No webhooks could be repaired');
+        return bridge;
       }
 
       const updatedBridge = await prisma.bridgePair.update({
         where: { id: bridgeId },
-        data: {
-          discordWebhookId: webhook.id,
-          discordWebhookToken: webhook.token,
-        },
+        data: updateData,
       });
 
-      log.info({ bridgeId, webhookId: webhook.id }, 'Repaired bridge webhook');
       return updatedBridge;
     } catch (error) {
       log.error({ bridgeId, error }, 'Failed to repair bridge webhook');
