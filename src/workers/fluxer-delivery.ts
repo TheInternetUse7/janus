@@ -12,11 +12,11 @@ export class FluxerDeliveryWorker {
   private worker: Worker<DeliveryJobData>;
   private fluxerClient: FluxerClient;
 
-  constructor(fluxerClient: FluxerClient) {
+  constructor(fluxerClient: FluxerClient, channelId: string) {
     this.fluxerClient = fluxerClient;
 
     this.worker = new Worker<DeliveryJobData>(
-      'janus_deliver_fluxer_*',
+      `janus_deliver_fluxer_${channelId}`,
       async (job: Job<DeliveryJobData>) => {
         return this.processJob(job);
       },
@@ -65,6 +65,11 @@ export class FluxerDeliveryWorker {
     targetChannelId: string,
     bridgePairId: string
   ): Promise<void> {
+    if (!event.content?.trim()) {
+      log.debug({ messageId: event.source.messageId }, 'Skipping empty message');
+      return;
+    }
+
     const result = await this.fluxerClient.sendMessage(targetChannelId, {
       content: event.content,
       masquerade: {

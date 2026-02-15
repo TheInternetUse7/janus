@@ -1,6 +1,7 @@
 import { Client, Events, Routes } from '@fluxerjs/core';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../lib/logger';
+import { bridgeService } from '../../lib/bridge';
 
 const log = createChildLogger('fluxer-client');
 
@@ -45,14 +46,20 @@ export class FluxerClient extends EventEmitter {
       log.info({ username: this.client.user?.username }, 'Fluxer client ready');
     });
 
+    const getChannelId = (data: any) => data.channelId || data.channel_id;
+    const getGuildId = (data: any) => data.guildId || data.guild_id;
+
     this.client.on(Events.MessageCreate, async (data: any) => {
       if (data.author?.bot) return;
       if (!data.content) return;
 
+      const channelId = getChannelId(data);
+      const guildId = getGuildId(data);
+
       const fluxerMessage: FluxerMessage = {
         id: data.id,
-        channelId: data.channel_id,
-        guildId: data.guild_id,
+        channelId: channelId,
+        guildId: guildId,
         content: data.content,
         author: {
           id: data.author?.id ?? 'unknown',
@@ -69,6 +76,63 @@ export class FluxerClient extends EventEmitter {
         timestamp: data.timestamp ?? new Date().toISOString(),
         editedAt: data.edited_timestamp ?? null,
       };
+
+      if (data.content.startsWith('!bridge ')) {
+        const args = data.content.slice(8).trim().split(/\s+/);
+        const command = args.shift()?.toLowerCase();
+
+        try {
+          if (command === 'create') {
+            const discordChannelId = args[0];
+            if (!discordChannelId) {
+              await this.sendMessage(channelId, { content: 'Usage: !bridge create <discord_channel_id>' });
+              return;
+            }
+            const bridge = await bridgeService.createBridge(discordChannelId, channelId, 'UNKNOWN_DISCORD_GUILD', guildId);
+            await this.sendMessage(channelId, { content: `Bridge created! ID: ${bridge.id}` });
+          } else if (command === 'list') {
+            const bridges = await bridgeService.listBridges(undefined, guildId);
+            if (bridges.length === 0) {
+              await this.sendMessage(channelId, { content: 'No active bridges found.' });
+            } else {
+              const list = bridges.map(b => `- Discord: ${b.discordChannelId} <-> Fluxer: ${b.fluxerChannelId} (ID: ${b.id})`).join('\n');
+              await this.sendMessage(channelId, { content: `Active Bridges:\n${list}` });
+            }
+          } else if (command === 'delete') {
+            const bridgeId = args[0];
+            if (!bridgeId) {
+              await this.sendMessage(channelId, { content: 'Usage: !bridge delete <bridge_id>' });
+              return;
+            }
+            await bridgeService.deleteBridge(bridgeId);
+            await this.sendMessage(channelId, { content: `Bridge ${bridgeId} deleted.` });
+          } else if (command === 'toggle') {
+            const bridgeId = args[0];
+            const active = args[1] === 'true' || args[1] === 'on' || args[1] === '1';
+
+            if (!bridgeId) {
+              await this.sendMessage(channelId, { content: 'Usage: !bridge toggle <bridge_id> <true/false>' });
+              return;
+            }
+
+            await bridgeService.toggleBridge(bridgeId, active);
+            await this.sendMessage(data.channel_id, { content: `Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.` });
+          }
+        } catch (error: any) {
+          log.error({ error }, 'Failed to execute bridge command');
+          try {
+            let content = 'An error occurred while executing the command.';
+            if (error instanceof Error && error.message.startsWith('Bridge validation failed:')) {
+              content = error.message;
+            }
+            await this.sendMessage(channelId, { content });
+          } catch (sendError) {
+            log.error({ sendError }, 'Failed to send error message to Fluxer');
+          }
+        }
+        return; // Don't emit message event for commands
+      }
+
       this.emit('message', fluxerMessage);
     });
 

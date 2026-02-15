@@ -11,12 +11,17 @@ import { normalizeToCanonical as normalizeDiscord } from './platforms/discord/no
 import { normalizeToCanonical as normalizeFluxer } from './platforms/fluxer/normalizer';
 import { ingestQueue } from './lib/queues';
 import { isLoopMessage } from './lib/loopFilter';
+import { RouterWorker } from './workers/router';
+import { DeliveryWorkerManager } from './lib/deliveryWorkerManager';
+import { bridgeService, setDiscordClient } from './lib/bridge';
 
 const log = createChildLogger('janus');
 
 class Janus {
   private discordClient: DiscordClient | null = null;
   private fluxerClient: FluxerClient | null = null;
+  private routerWorker: RouterWorker | null = null;
+  private deliveryWorkerManager: DeliveryWorkerManager | null = null;
   private shuttingDown = false;
 
   async start(): Promise<void> {
@@ -28,12 +33,56 @@ class Janus {
     await this.startDiscord();
     await this.startFluxer();
 
+    this.routerWorker = new RouterWorker();
+    log.info('Router worker started');
+
+    if (this.discordClient && this.fluxerClient) {
+      // Repair any bridges with missing webhook credentials
+      await bridgeService.repairAllBridgeWebhooks();
+
+      this.deliveryWorkerManager = new DeliveryWorkerManager(this.discordClient, this.fluxerClient);
+      await this.deliveryWorkerManager.loadActiveBridges();
+      log.info('Delivery worker manager started');
+
+      bridgeService.on('bridge:created', async (bridge) => {
+        if (this.deliveryWorkerManager && bridge.isActive) {
+          await this.deliveryWorkerManager.startForBridge(
+            bridge.id,
+            bridge.discordChannelId,
+            bridge.fluxerChannelId
+          );
+        }
+      });
+
+      bridgeService.on('bridge:deleted', async (bridgeId) => {
+        if (this.deliveryWorkerManager) {
+          await this.deliveryWorkerManager.stopForBridge(bridgeId);
+        }
+      });
+
+      bridgeService.on('bridge:toggled', async (bridge) => {
+        if (this.deliveryWorkerManager) {
+          if (bridge.isActive) {
+            await this.deliveryWorkerManager.startForBridge(
+              bridge.id,
+              bridge.discordChannelId,
+              bridge.fluxerChannelId
+            );
+          } else {
+            await this.deliveryWorkerManager.stopForBridge(bridge.id);
+          }
+        }
+      });
+    }
+
     log.info({ version: '1.0.0' }, 'Janus bridge started');
   }
 
   private async startDiscord(): Promise<void> {
     this.discordClient = new DiscordClient();
-    
+
+    setDiscordClient(this.discordClient);
+
     this.discordClient.on('message', async (event) => {
       const isLoop = await isLoopMessage(event.content, event.author.username);
       if (isLoop) {
@@ -121,6 +170,14 @@ class Janus {
 
     if (this.fluxerClient) {
       this.fluxerClient.disconnect();
+    }
+
+    if (this.routerWorker) {
+      await this.routerWorker.close();
+    }
+
+    if (this.deliveryWorkerManager) {
+      await this.deliveryWorkerManager.closeAll();
     }
 
     await closeAllQueues();

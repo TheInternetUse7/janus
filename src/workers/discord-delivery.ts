@@ -12,11 +12,11 @@ export class DiscordDeliveryWorker {
   private worker: Worker<DeliveryJobData>;
   private discordClient: DiscordClient;
 
-  constructor(discordClient: DiscordClient) {
+  constructor(discordClient: DiscordClient, channelId: string) {
     this.discordClient = discordClient;
 
     this.worker = new Worker<DeliveryJobData>(
-      'janus_deliver_discord_*',
+      `janus_deliver_discord_${channelId}`,
       async (job: Job<DeliveryJobData>) => {
         return this.processJob(job);
       },
@@ -72,6 +72,11 @@ export class DiscordDeliveryWorker {
     webhookToken: string,
     bridgePairId: string
   ): Promise<void> {
+    if (!event.content?.trim()) {
+      log.debug({ messageId: event.source.messageId }, 'Skipping empty message');
+      return;
+    }
+
     const destMsgId = await this.discordClient.sendWebhook(
       webhookId,
       webhookToken,

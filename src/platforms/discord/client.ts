@@ -2,6 +2,9 @@ import { Client, GatewayIntentBits, Events, Message, Guild, TextChannel, NewsCha
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../lib/logger';
 import { config } from '../../config';
+import { bridgeCommand } from './commands';
+import { bridgeService } from '../../lib/bridge';
+import { REST, Routes } from 'discord.js';
 
 const log = createChildLogger('discord-client');
 
@@ -92,6 +95,64 @@ export class DiscordClient extends EventEmitter {
     this.client.on(Events.Error, (error: Error) => {
       log.error({ error }, 'Discord client error');
     });
+
+    this.client.on(Events.InteractionCreate, async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+
+      if (interaction.commandName === 'bridge') {
+        const subcommand = interaction.options.getSubcommand();
+
+        try {
+          if (subcommand === 'create') {
+            const fluxerChannelId = interaction.options.getString('fluxer_channel_id', true);
+            const discordChannelId = interaction.channelId;
+            const discordGuildId = interaction.guildId;
+
+            if (!discordGuildId) {
+              await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+              return;
+            }
+
+            await bridgeService.createBridge(discordChannelId, fluxerChannelId, discordGuildId);
+            await interaction.reply({ content: `Bridge created between this channel and Fluxer channel ${fluxerChannelId}`, ephemeral: true });
+          } else if (subcommand === 'list') {
+            const bridges = await bridgeService.listBridges(interaction.guildId || undefined);
+            if (bridges.length === 0) {
+              await interaction.reply({ content: 'No active bridges found for this server.', ephemeral: true });
+            } else {
+              const list = bridges.map(b => `- Discord: <#${b.discordChannelId}> <-> Fluxer: ${b.fluxerChannelId} (ID: ${b.id})`).join('\n');
+              await interaction.reply({ content: `Active Bridges:\n${list}`, ephemeral: true });
+            }
+          } else if (subcommand === 'delete') {
+            const bridgeId = interaction.options.getString('bridge_id', true);
+            await bridgeService.deleteBridge(bridgeId);
+            await interaction.reply({ content: `Bridge ${bridgeId} deleted.`, ephemeral: true });
+          } else if (subcommand === 'toggle') {
+            const bridgeId = interaction.options.getString('bridge_id', true);
+            const active = interaction.options.getBoolean('active', true);
+            await bridgeService.toggleBridge(bridgeId, active);
+            await interaction.reply({ content: `Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.`, ephemeral: true });
+          } else if (subcommand === 'repair') {
+            const bridgeId = interaction.options.getString('bridge_id', true);
+            const repairedBridge = await bridgeService.repairBridgeWebhook(bridgeId);
+            if (repairedBridge) {
+              await interaction.reply({ content: `Bridge ${bridgeId} webhook repaired successfully.`, ephemeral: true });
+            } else {
+              await interaction.reply({ content: `Failed to repair bridge ${bridgeId}. Check logs for details.`, ephemeral: true });
+            }
+          }
+        } catch (error: any) {
+          log.error({ error }, 'Failed to execute bridge command');
+
+          let content = 'An error occurred while executing the command.';
+          if (error instanceof Error && error.message.startsWith('Bridge validation failed:')) {
+            content = error.message;
+          }
+
+          await interaction.reply({ content, ephemeral: true });
+        }
+      }
+    });
   }
 
   private normalizeMessage(
@@ -123,6 +184,21 @@ export class DiscordClient extends EventEmitter {
   async connect(): Promise<void> {
     log.info('Connecting to Discord...');
     await this.client.login(config.discord.token);
+
+    // Register commands
+    const rest = new REST({ version: '10' }).setToken(config.discord.token);
+    try {
+      log.info('Started refreshing application (/) commands.');
+
+      await rest.put(
+        Routes.applicationCommands(this.client.user?.id || ''),
+        { body: [bridgeCommand.toJSON()] },
+      );
+
+      log.info('Successfully reloaded application (/) commands.');
+    } catch (error) {
+      log.error({ error }, 'Failed to register commands');
+    }
   }
 
   disconnect(): void {
@@ -158,7 +234,7 @@ export class DiscordClient extends EventEmitter {
 
       const webhooks = await channel.fetchWebhooks();
       const webhook = webhooks.first();
-      
+
       if (webhook) {
         return { id: webhook.id, token: webhook.token! };
       }
