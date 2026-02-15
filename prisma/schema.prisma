@@ -1,0 +1,55 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. Configuration: The "Bridge" definitions
+model BridgePair {
+  id                String   @id @default(uuid())
+
+  // Discord Side
+  discordGuildId    String
+  discordChannelId  String
+  discordWebhookId  String?
+  discordWebhookToken String?
+
+  // Fluxer Side
+  fluxerGuildId     String?
+  fluxerChannelId   String
+
+  // Settings
+  isActive          Boolean  @default(true)
+  syncUploads       Boolean  @default(true)
+
+  createdAt         DateTime @default(now())
+
+  messages          MessageMap[]
+
+  @@unique([discordChannelId, fluxerChannelId])
+  @@index([discordChannelId])
+  @@index([fluxerChannelId])
+  @@map("janus_bridge_pairs")
+}
+
+// 2. Correlation: The "Rosetta Stone" of IDs
+model MessageMap {
+  id                String   @id @default(uuid())
+
+  pairId            String
+  bridgePair        BridgePair @relation(fields: [pairId], references: [id])
+
+  sourcePlatform    String
+  sourceMsgId       String
+
+  destPlatform      String
+  destMsgId         String
+
+  createdAt         DateTime @default(now())
+
+  @@unique([sourcePlatform, sourceMsgId])
+  @@index([destPlatform, destMsgId])
+  @@map("janus_message_maps")
+}

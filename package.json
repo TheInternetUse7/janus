@@ -1,0 +1,62 @@
+{
+  "name": "janus",
+  "version": "1.0.0",
+  "description": "Bi-directional bridge between Discord and Fluxer",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
+    "docker:build": "docker build -t janus-bridge:latest .",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheInternetUse7/janus.git"
+  },
+  "keywords": [
+    "discord",
+    "fluxer",
+    "bridge",
+    "chat"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/TheInternetUse7/janus/issues"
+  },
+  "homepage": "https://github.com/TheInternetUse7/janus#readme",
+  "dependencies": {
+    "@discordjs/core": "^2.4.0",
+    "@discordjs/rest": "^2.6.0",
+    "@discordjs/ws": "^2.0.4",
+    "@fluxerjs/core": "^1.0.6",
+    "@prisma/adapter-pg": "^7.4.0",
+    "@prisma/client": "^7.4.0",
+    "axios": "^1.13.5",
+    "bullmq": "^5.69.2",
+    "crypto-js": "^4.2.0",
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.3.1",
+    "ioredis": "^5.9.3",
+    "opossum": "^9.0.0",
+    "pg": "^8.18.0",
+    "pino": "^10.3.1",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/opossum": "^8.1.9",
+    "@types/pg": "^8.16.0",
+    "@types/ws": "^8.18.1",
+    "pino-pretty": "^13.1.3",
+    "prisma": "^7.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
