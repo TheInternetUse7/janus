@@ -16,7 +16,7 @@ export class DiscordDeliveryWorker {
     this.discordClient = discordClient;
 
     this.worker = new Worker<DeliveryJobData>(
-      'janus:deliver:discord:*',
+      'janus_deliver_discord_*',
       async (job: Job<DeliveryJobData>) => {
         return this.processJob(job);
       },

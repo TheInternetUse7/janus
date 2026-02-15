@@ -13,7 +13,7 @@ function getRedisOptions() {
  * The high-speed FIFO ingest queue.
  * All normalized CanonicalEvents land here first.
  */
-export const ingestQueue = new Queue<IngestJobData>('janus:ingest', {
+export const ingestQueue = new Queue<IngestJobData>('janus_ingest', {
   ...getRedisOptions(),
   defaultJobOptions: {
     removeOnComplete: { count: 1000 },
@@ -33,7 +33,7 @@ export const ingestQueue = new Queue<IngestJobData>('janus:ingest', {
 const deliveryQueues = new Map<string, Queue<DeliveryJobData>>();
 
 export function getDeliveryQueue(platform: string, channelId: string): Queue<DeliveryJobData> {
-  const queueName = `janus:deliver:${platform}:${channelId}`;
+  const queueName = `janus_deliver_${platform}_${channelId}`;
 
   if (!deliveryQueues.has(queueName)) {
     log.debug({ queueName }, 'Creating new delivery queue');

@@ -16,7 +16,7 @@ export class FluxerDeliveryWorker {
     this.fluxerClient = fluxerClient;
 
     this.worker = new Worker<DeliveryJobData>(
-      'janus:deliver:fluxer:*',
+      'janus_deliver_fluxer_*',
       async (job: Job<DeliveryJobData>) => {
         return this.processJob(job);
       },

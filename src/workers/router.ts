@@ -12,7 +12,7 @@ export class RouterWorker {
 
   constructor() {
     this.worker = new Worker<IngestJobData>(
-      'janus:ingest',
+      'janus_ingest',
       async (job: Job<IngestJobData>) => {
         return this.processJob(job);
       },
