@@ -160,29 +160,32 @@ export class FluxerClient extends EventEmitter {
       this.emit('message', fluxerMessage);
     });
 
-    this.client.on(Events.MessageUpdate, async (data: any) => {
-      if (!data.content) return;
-      if (data.author?.bot) return;
+    this.client.on(Events.MessageUpdate, async (_oldMessage: any, newMessage: any) => {
+      if (!newMessage?.content) return;
+      if (newMessage.author?.bot) return;
+
+      const channelId = getChannelId(newMessage);
+      const guildId = getGuildId(newMessage);
 
       const fluxerMessage: FluxerMessage = {
-        id: data.id,
-        channelId: data.channel_id,
-        guildId: data.guild_id,
-        content: data.content,
+        id: newMessage.id,
+        channelId: channelId,
+        guildId: guildId,
+        content: newMessage.content,
         author: {
-          id: data.author?.id ?? 'unknown',
-          name: data.author?.username ?? 'unknown',
-          avatar: data.author?.avatar ?? null,
-          bot: data.author?.bot ?? false,
+          id: newMessage.author?.id ?? 'unknown',
+          name: newMessage.author?.username ?? 'unknown',
+          avatar: newMessage.author?.avatar ?? null,
+          bot: newMessage.author?.bot ?? false,
         },
-        attachments: (data.attachments ?? []).map((att: any) => ({
+        attachments: (newMessage.attachments ?? []).map((att: any) => ({
           url: att.url ?? '',
           filename: att.filename ?? 'unknown',
           contentType: att.content_type ?? null,
           size: att.size ?? 0,
         })),
-        timestamp: data.timestamp ?? new Date().toISOString(),
-        editedAt: data.edited_timestamp ?? null,
+        timestamp: newMessage.createdAt?.toISOString?.() ?? newMessage.timestamp ?? new Date().toISOString(),
+        editedAt: newMessage.editedAt?.toISOString?.() ?? newMessage.edited_timestamp ?? null,
       };
       this.emit('messageUpdate', fluxerMessage);
     });
@@ -190,8 +193,8 @@ export class FluxerClient extends EventEmitter {
     this.client.on(Events.MessageDelete, async (data: any) => {
       this.emit('messageDelete', {
         id: data.id,
-        channelId: data.channel_id,
-        guildId: data.guild_id,
+        channelId: getChannelId(data),
+        guildId: getGuildId(data),
       });
     });
 
