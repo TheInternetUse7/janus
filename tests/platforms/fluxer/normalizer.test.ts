@@ -24,8 +24,18 @@ describe('fluxer normalizer', () => {
   it('builds a Fluxer CDN avatar URL from avatar hash', () => {
     const output = normalizeToCanonical(baseMessage('abc123hash'), 'MSG_UPDATE');
 
-    expect(output.author.avatar).toBe('https://cdn.fluxer.app/avatars/user-123/abc123hash.png');
+    expect(output.author.avatar).toBe(
+      'https://fluxerusercontent.com/avatars/user-123/abc123hash.png'
+    );
     expect(output.source.guildId).toBeNull();
+  });
+
+  it('uses gif extension for animated avatars', () => {
+    const output = normalizeToCanonical(baseMessage('a_animhash'), 'MSG_CREATE');
+
+    expect(output.author.avatar).toBe(
+      'https://fluxerusercontent.com/avatars/user-123/a_animhash.gif'
+    );
   });
 
   it('keeps full avatar URLs unchanged', () => {

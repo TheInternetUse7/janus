@@ -8,7 +8,7 @@ const log = createChildLogger('fluxer-client');
 export interface FluxerMessage {
   id: string;
   channelId: string;
-  guildId?: string;
+  guildId?: string | null;
   content: string;
   author: {
     id: string;
@@ -92,7 +92,7 @@ export class FluxerClient extends EventEmitter {
         author: {
           id: data.author?.id ?? 'unknown',
           name: data.author?.username ?? 'unknown',
-          avatar: data.author?.avatar ?? null,
+          avatar: data.author?.avatar ?? data.author?.avatar_url ?? null,
           bot: data.author?.bot ?? false,
         },
         attachments: (data.attachments ?? []).map((att: any) => ({
@@ -195,7 +195,7 @@ export class FluxerClient extends EventEmitter {
         author: {
           id: newMessage.author?.id ?? 'unknown',
           name: newMessage.author?.username ?? 'unknown',
-          avatar: newMessage.author?.avatar ?? null,
+          avatar: newMessage.author?.avatar ?? newMessage.author?.avatar_url ?? null,
           bot: newMessage.author?.bot ?? false,
         },
         attachments: (newMessage.attachments ?? []).map((att: any) => ({

@@ -18,9 +18,10 @@ function buildFluxerAvatarUrl(userId: string, avatarHash: string | null): string
     return avatarHash;
   }
 
-  // Build the Fluxer CDN URL
-  // Format: https://cdn.fluxer.app/avatars/{userId}/{hash}.png
-  return `https://cdn.fluxer.app/avatars/${userId}/${avatarHash}.png`;
+  // Build the Fluxer CDN URL.
+  // Fluxer uses gif for animated avatars (hash starting with "a_"), otherwise png.
+  const extension = avatarHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://fluxerusercontent.com/avatars/${userId}/${avatarHash}.${extension}`;
 }
 
 export function normalizeToCanonical(
