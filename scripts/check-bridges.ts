@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../src/lib/env';
 import { connectDatabase, disconnectDatabase, prisma } from '../src/lib/database';
 import { createChildLogger } from '../src/lib/logger';
 

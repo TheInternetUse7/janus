@@ -9,6 +9,7 @@ Bi-directional bridge between Discord and Fluxer.
 - Redis 7+ (running locally)
 - Discord Bot Token
 - Fluxer Bot Token
+- Docker (optional, for containerized setup)
 
 ## Quick Start
 
@@ -23,10 +24,10 @@ npm install
 ### 2. Configure Environment
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 ```
 
-Edit `.env`:
+Edit `.env.local`:
 
 ```env
 DISCORD_TOKEN=your_discord_bot_token
@@ -88,6 +89,31 @@ npm run prisma:push
 ```bash
 npm run dev
 ```
+
+## Docker Setup
+
+You can run Janus + PostgreSQL + Redis with Docker Compose.
+
+1. Create `.env` from `.env.example` and set at least:
+   - `DISCORD_TOKEN`
+   - `FLUXER_TOKEN`
+2. Start the stack:
+
+```bash
+npm run docker:up
+```
+
+3. Stop the stack:
+
+```bash
+npm run docker:down
+```
+
+Notes:
+
+- The compose stack sets `DATABASE_URL` and `REDIS_URL` to container service hosts automatically.
+- On startup, Janus runs `prisma generate` and `prisma push` before `npm start`.
+- Local development reads `.env.local` first, then `.env` for missing keys.
 
 ## Getting Tokens
 

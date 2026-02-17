@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../src/lib/env';
 import { prisma } from '../src/lib/database';
 import { FluxerClient } from '../src/platforms/fluxer/client';
 import { config } from '../src/config';

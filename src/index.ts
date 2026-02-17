@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './lib/env';
 import { createChildLogger } from './lib/logger';
 import { config } from './config';
 import { connectDatabase, disconnectDatabase } from './lib/database';

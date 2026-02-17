@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../src/lib/env';
 import { connectDatabase, disconnectDatabase, prisma } from '../src/lib/database';
 import { DiscordClient } from '../src/platforms/discord/client';
 import { createChildLogger } from '../src/lib/logger';
