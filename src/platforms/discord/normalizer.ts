@@ -1,7 +1,15 @@
-import type { CanonicalEvent, CanonicalEventType, CanonicalAuthor, CanonicalAttachment } from '../../types/canonical';
+import type {
+  CanonicalEvent,
+  CanonicalEventType,
+  CanonicalAuthor,
+  CanonicalAttachment,
+} from '../../types/canonical';
 import type { DiscordMessageEvent } from './client';
 
-export function normalizeToCanonical(event: DiscordMessageEvent, type: CanonicalEventType): CanonicalEvent {
+export function normalizeToCanonical(
+  event: DiscordMessageEvent,
+  type: CanonicalEventType
+): CanonicalEvent {
   const author: CanonicalAuthor = {
     name: event.author.username,
     avatar: event.author.avatar,

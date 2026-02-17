@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { createChildLogger } from '../lib/logger';
 import { prisma } from '../lib/database';
 import { checkRateLimit, getRateLimitDelay } from '../lib/rateLimiter';
-import { registerOutgoingHash, isLoopMessage } from '../lib/loopFilter';
+import { registerOutgoingHash } from '../lib/loopFilter';
 import { DiscordClient } from '../platforms/discord/client';
 import type { DeliveryJobData } from '../types/canonical';
 
@@ -36,7 +36,8 @@ export class DiscordDeliveryWorker {
   }
 
   async processJob(job: Job<DeliveryJobData>): Promise<void> {
-    const { event, bridgePairId, targetChannelId, discordWebhookId, discordWebhookToken } = job.data;
+    const { event, bridgePairId, targetChannelId, discordWebhookId, discordWebhookToken } =
+      job.data;
 
     log.debug(
       { eventType: event.type, messageId: event.source.messageId, targetChannelId },
@@ -57,11 +58,29 @@ export class DiscordDeliveryWorker {
     }
 
     if (event.type === 'MSG_CREATE') {
-      await this.handleMessageCreate(event, targetChannelId, discordWebhookId, discordWebhookToken, bridgePairId);
+      await this.handleMessageCreate(
+        event,
+        targetChannelId,
+        discordWebhookId,
+        discordWebhookToken,
+        bridgePairId
+      );
     } else if (event.type === 'MSG_UPDATE') {
-      await this.handleMessageUpdate(event, targetChannelId, discordWebhookId, discordWebhookToken, bridgePairId);
+      await this.handleMessageUpdate(
+        event,
+        targetChannelId,
+        discordWebhookId,
+        discordWebhookToken,
+        bridgePairId
+      );
     } else if (event.type === 'MSG_DELETE') {
-      await this.handleMessageDelete(event, targetChannelId, discordWebhookId, discordWebhookToken, bridgePairId);
+      await this.handleMessageDelete(
+        event,
+        targetChannelId,
+        discordWebhookId,
+        discordWebhookToken,
+        bridgePairId
+      );
     }
   }
 
@@ -129,7 +148,10 @@ export class DiscordDeliveryWorker {
     );
 
     if (success) {
-      log.info({ sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId }, 'Message updated on Discord');
+      log.info(
+        { sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId },
+        'Message updated on Discord'
+      );
     }
   }
 
@@ -161,7 +183,10 @@ export class DiscordDeliveryWorker {
 
     if (success) {
       await prisma.messageMap.delete({ where: { id: messageMap.id } });
-      log.info({ sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId }, 'Message deleted on Discord');
+      log.info(
+        { sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId },
+        'Message deleted on Discord'
+      );
     }
   }
 

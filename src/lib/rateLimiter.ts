@@ -8,7 +8,7 @@ const WINDOW_SECONDS = 2;
 
 /**
  * Leaky Bucket Rate Limiter using Redis.
- * 
+ *
  * Per-Channel Limit: 5 req/2s (Standard Discord Webhook limit).
  * Returns true if the request is allowed, false if rate limited.
  */

@@ -17,7 +17,7 @@ export const config = {
   // Discord
   discord: {
     token: required('DISCORD_TOKEN'),
-    shardCount: parseInt(optional('DISCORD_SHARD_COUNT', 'auto'), 10) || 'auto' as const,
+    shardCount: parseInt(optional('DISCORD_SHARD_COUNT', 'auto'), 10) || ('auto' as const),
   },
 
   // Fluxer

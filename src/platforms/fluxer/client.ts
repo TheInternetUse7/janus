@@ -64,7 +64,11 @@ export class FluxerClient extends EventEmitter {
       const guildId = getGuildId(data);
 
       // Check if this message matches a pending webhook send
-      const pendingKey = this.findPendingWebhookMessage(channelId, data.content, data.author?.username);
+      const pendingKey = this.findPendingWebhookMessage(
+        channelId,
+        data.content,
+        data.author?.username
+      );
       if (pendingKey) {
         const pending = this.pendingWebhookMessages.get(pendingKey);
         if (pending) {
@@ -109,17 +113,29 @@ export class FluxerClient extends EventEmitter {
           if (command === 'create') {
             const discordChannelId = args[0];
             if (!discordChannelId) {
-              await this.sendMessage(channelId, { content: 'Usage: !bridge create <discord_channel_id>' });
+              await this.sendMessage(channelId, {
+                content: 'Usage: !bridge create <discord_channel_id>',
+              });
               return;
             }
-            const bridge = await bridgeService.createBridge(discordChannelId, channelId, 'UNKNOWN_DISCORD_GUILD', guildId);
+            const bridge = await bridgeService.createBridge(
+              discordChannelId,
+              channelId,
+              'UNKNOWN_DISCORD_GUILD',
+              guildId
+            );
             await this.sendMessage(channelId, { content: `Bridge created! ID: ${bridge.id}` });
           } else if (command === 'list') {
             const bridges = await bridgeService.listBridges(undefined, guildId);
             if (bridges.length === 0) {
               await this.sendMessage(channelId, { content: 'No active bridges found.' });
             } else {
-              const list = bridges.map(b => `- Discord: ${b.discordChannelId} <-> Fluxer: ${b.fluxerChannelId} (ID: ${b.id})`).join('\n');
+              const list = bridges
+                .map(
+                  (b) =>
+                    `- Discord: ${b.discordChannelId} <-> Fluxer: ${b.fluxerChannelId} (ID: ${b.id})`
+                )
+                .join('\n');
               await this.sendMessage(channelId, { content: `Active Bridges:\n${list}` });
             }
           } else if (command === 'delete') {
@@ -135,12 +151,16 @@ export class FluxerClient extends EventEmitter {
             const active = args[1] === 'true' || args[1] === 'on' || args[1] === '1';
 
             if (!bridgeId) {
-              await this.sendMessage(channelId, { content: 'Usage: !bridge toggle <bridge_id> <true/false>' });
+              await this.sendMessage(channelId, {
+                content: 'Usage: !bridge toggle <bridge_id> <true/false>',
+              });
               return;
             }
 
             await bridgeService.toggleBridge(bridgeId, active);
-            await this.sendMessage(data.channel_id, { content: `Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.` });
+            await this.sendMessage(data.channel_id, {
+              content: `Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.`,
+            });
           }
         } catch (error: any) {
           log.error({ error }, 'Failed to execute bridge command');
@@ -184,7 +204,8 @@ export class FluxerClient extends EventEmitter {
           contentType: att.content_type ?? null,
           size: att.size ?? 0,
         })),
-        timestamp: newMessage.createdAt?.toISOString?.() ?? newMessage.timestamp ?? new Date().toISOString(),
+        timestamp:
+          newMessage.createdAt?.toISOString?.() ?? newMessage.timestamp ?? new Date().toISOString(),
         editedAt: newMessage.editedAt?.toISOString?.() ?? newMessage.edited_timestamp ?? null,
       };
       this.emit('messageUpdate', fluxerMessage);
@@ -232,13 +253,17 @@ export class FluxerClient extends EventEmitter {
       messageData.avatar_url = payload.masquerade.avatar;
     }
 
-    const result = await this.client.rest.post(Routes.channelMessages(channelId), { body: messageData });
+    const result = await this.client.rest.post(Routes.channelMessages(channelId), {
+      body: messageData,
+    });
     return { id: (result as any).id };
   }
 
   async editMessage(messageId: string, channelId: string, content: string): Promise<void> {
     log.debug({ messageId, channelId }, 'Editing message on Fluxer');
-    await this.client.rest.patch(Routes.channelMessage(channelId, messageId), { body: { content } });
+    await this.client.rest.patch(Routes.channelMessage(channelId, messageId), {
+      body: { content },
+    });
   }
 
   async deleteMessage(messageId: string, channelId: string): Promise<void> {
@@ -260,9 +285,14 @@ export class FluxerClient extends EventEmitter {
     }
   }
 
-  async createWebhook(channelId: string, name: string): Promise<{ id: string; token: string } | null> {
+  async createWebhook(
+    channelId: string,
+    name: string
+  ): Promise<{ id: string; token: string } | null> {
     try {
-      const webhook = await this.client.rest.post(Routes.channelWebhooks(channelId), { body: { name } });
+      const webhook = await this.client.rest.post(Routes.channelWebhooks(channelId), {
+        body: { name },
+      });
       return { id: (webhook as any).id, token: (webhook as any).token ?? '' };
     } catch (error) {
       log.error({ channelId, error }, 'Failed to create webhook');
@@ -270,7 +300,11 @@ export class FluxerClient extends EventEmitter {
     }
   }
 
-  private findPendingWebhookMessage(channelId: string, content: string, username: string): string | null {
+  private findPendingWebhookMessage(
+    channelId: string,
+    content: string,
+    username: string
+  ): string | null {
     // Look for a pending webhook message that matches this channel, content, and username
     for (const [key, pending] of this.pendingWebhookMessages.entries()) {
       if (
@@ -307,22 +341,22 @@ export class FluxerClient extends EventEmitter {
       // Create a promise that will be resolved when we receive the message event
       const messageIdPromise = channelId
         ? new Promise<string | null>((resolve) => {
-          const key = `${channelId}-${Date.now()}-${Math.random()}`;
-          const timeout = setTimeout(() => {
-            this.pendingWebhookMessages.delete(key);
-            log.warn({ webhookId, channelId }, 'Timeout waiting for webhook message ID');
-            resolve(null);
-          }, 5000); // 5 second timeout
+            const key = `${channelId}-${Date.now()}-${Math.random()}`;
+            const timeout = setTimeout(() => {
+              this.pendingWebhookMessages.delete(key);
+              log.warn({ webhookId, channelId }, 'Timeout waiting for webhook message ID');
+              resolve(null);
+            }, 5000); // 5 second timeout
 
-          this.pendingWebhookMessages.set(key, {
-            channelId,
-            content,
-            username,
-            timestamp: Date.now(),
-            resolve,
-            timeout,
-          });
-        })
+            this.pendingWebhookMessages.set(key, {
+              channelId,
+              content,
+              username,
+              timestamp: Date.now(),
+              resolve,
+              timeout,
+            });
+          })
         : Promise.resolve(null);
 
       // Send the webhook (returns void)

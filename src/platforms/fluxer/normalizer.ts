@@ -1,4 +1,9 @@
-import type { CanonicalEvent, CanonicalEventType, CanonicalAuthor, CanonicalAttachment } from '../../types/canonical';
+import type {
+  CanonicalEvent,
+  CanonicalEventType,
+  CanonicalAuthor,
+  CanonicalAttachment,
+} from '../../types/canonical';
 import type { FluxerMessage } from '../fluxer/client';
 
 /**
@@ -18,7 +23,10 @@ function buildFluxerAvatarUrl(userId: string, avatarHash: string | null): string
   return `https://cdn.fluxer.app/avatars/${userId}/${avatarHash}.png`;
 }
 
-export function normalizeToCanonical(event: FluxerMessage, type: CanonicalEventType): CanonicalEvent {
+export function normalizeToCanonical(
+  event: FluxerMessage,
+  type: CanonicalEventType
+): CanonicalEvent {
   const author: CanonicalAuthor = {
     name: event.author.name,
     avatar: buildFluxerAvatarUrl(event.author.id, event.author.avatar),

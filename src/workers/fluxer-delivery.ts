@@ -8,7 +8,10 @@ import { FluxerClient } from '../platforms/fluxer/client';
 import type { DeliveryJobData } from '../types/canonical';
 
 const log = createChildLogger('fluxer-delivery-worker');
-const EDIT_UPDATE_TTL_SECONDS = parseInt(process.env.FLUXER_EDIT_UPDATE_TTL_SECONDS || '604800', 10);
+const EDIT_UPDATE_TTL_SECONDS = parseInt(
+  process.env.FLUXER_EDIT_UPDATE_TTL_SECONDS || '604800',
+  10
+);
 
 export class FluxerDeliveryWorker {
   private worker: Worker<DeliveryJobData>;
@@ -67,7 +70,13 @@ export class FluxerDeliveryWorker {
     const fluxerWebhookToken = bridge.fluxerWebhookToken;
 
     if (event.type === 'MSG_CREATE') {
-      await this.handleMessageCreate(event, targetChannelId, fluxerWebhookId, fluxerWebhookToken, bridgePairId);
+      await this.handleMessageCreate(
+        event,
+        targetChannelId,
+        fluxerWebhookId,
+        fluxerWebhookToken,
+        bridgePairId
+      );
     } else if (event.type === 'MSG_UPDATE') {
       await this.handleMessageUpdate(
         event,
@@ -78,7 +87,13 @@ export class FluxerDeliveryWorker {
         bridgePairId
       );
     } else if (event.type === 'MSG_DELETE') {
-      await this.handleMessageDelete(event, targetChannelId, fluxerWebhookId, fluxerWebhookToken, bridgePairId);
+      await this.handleMessageDelete(
+        event,
+        targetChannelId,
+        fluxerWebhookId,
+        fluxerWebhookToken,
+        bridgePairId
+      );
     }
   }
 
@@ -121,9 +136,15 @@ export class FluxerDeliveryWorker {
 
       // Register the outgoing hash for loop detection
       await registerOutgoingHash(event.content, event.author.name);
-      log.info({ sourceMsgId: event.source.messageId, destMsgId }, 'Message bridged to Fluxer via webhook');
+      log.info(
+        { sourceMsgId: event.source.messageId, destMsgId },
+        'Message bridged to Fluxer via webhook'
+      );
     } else {
-      log.warn({ bridgePairId }, 'Missing Fluxer webhook credentials, falling back to regular message');
+      log.warn(
+        { bridgePairId },
+        'Missing Fluxer webhook credentials, falling back to regular message'
+      );
       const result = await this.fluxerClient.sendMessage(targetChannelId, {
         content: event.content,
         masquerade: {
@@ -175,7 +196,11 @@ export class FluxerDeliveryWorker {
     // Fluxer doesn't support editing webhook messages via API.
     // Workaround: keep original message and post a new "edited content" message with a jump link.
     if (fluxerWebhookId && fluxerWebhookToken) {
-      const fluxerMessageUrl = this.buildFluxerMessageUrl(targetGuildId, targetChannelId, messageMap.destMsgId);
+      const fluxerMessageUrl = this.buildFluxerMessageUrl(
+        targetGuildId,
+        targetChannelId,
+        messageMap.destMsgId
+      );
       const updateContent = this.buildWebhookEditWorkaroundContent(event.content, fluxerMessageUrl);
       const updateTrackerKey = this.getEditUpdateTrackerKey(
         bridgePairId,
@@ -220,11 +245,18 @@ export class FluxerDeliveryWorker {
       );
     } else {
       await this.fluxerClient.editMessage(messageMap.destMsgId, targetChannelId, event.content);
-      log.info({ sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId }, 'Message updated on Fluxer');
+      log.info(
+        { sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId },
+        'Message updated on Fluxer'
+      );
     }
   }
 
-  private buildFluxerMessageUrl(guildId: string | null, channelId: string, messageId: string): string {
+  private buildFluxerMessageUrl(
+    guildId: string | null,
+    channelId: string,
+    messageId: string
+  ): string {
     const guildSegment = guildId ?? '@me';
     const baseUrl = process.env.FLUXER_WEB_BASE_URL?.replace(/\/+$/, '') || 'https://fluxer.app';
     return `${baseUrl}/channels/${guildSegment}/${channelId}/${messageId}`;
@@ -279,10 +311,17 @@ export class FluxerDeliveryWorker {
     // Bot can delete any message in the channel with Manage Messages permission
     await this.fluxerClient.deleteMessage(messageMap.destMsgId, targetChannelId);
     await prisma.messageMap.delete({ where: { id: messageMap.id } });
-    log.info({ sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId }, 'Message deleted on Fluxer');
+    log.info(
+      { sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId },
+      'Message deleted on Fluxer'
+    );
   }
 
-  private getEditUpdateTrackerKey(bridgePairId: string, sourcePlatform: string, sourceMsgId: string): string {
+  private getEditUpdateTrackerKey(
+    bridgePairId: string,
+    sourcePlatform: string,
+    sourceMsgId: string
+  ): string {
     return `janus:fluxer:edit-update:${bridgePairId}:${sourcePlatform}:${sourceMsgId}`;
   }
 

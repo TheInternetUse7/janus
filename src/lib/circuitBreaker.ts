@@ -11,7 +11,7 @@ const breakers = new Map<string, CircuitBreaker>();
 /**
  * Create or get a circuit breaker for a specific service.
  * Uses the `opossum` library.
- * 
+ *
  * If the service returns 5xx errors > threshold times in the window,
  * the circuit "opens" and all requests are paused for resetTimeout ms.
  */

@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { createChildLogger } from '../lib/logger';
 import { prisma } from '../lib/database';
-import { getDeliveryQueue, ingestQueue } from '../lib/queues';
+import { getDeliveryQueue } from '../lib/queues';
 import { isLoopMessage } from '../lib/loopFilter';
 import type { IngestJobData, DeliveryJobData } from '../types/canonical';
 
@@ -45,7 +45,7 @@ export class RouterWorker {
     }
 
     const bridgePairs = await this.findBridgePairs(event.source.platform, event.source.channelId);
-    
+
     if (bridgePairs.length === 0) {
       log.debug({ channelId: event.source.channelId }, 'No bridge pairs found for channel');
       return;
@@ -55,8 +55,10 @@ export class RouterWorker {
       if (!pair.isActive) continue;
 
       const targetPlatform = event.source.platform === 'discord' ? 'fluxer' : 'discord';
-      const targetChannelId = event.source.platform === 'discord' ? pair.fluxerChannelId : pair.discordChannelId;
-      const targetGuildId = event.source.platform === 'discord' ? pair.fluxerGuildId : pair.discordGuildId;
+      const targetChannelId =
+        event.source.platform === 'discord' ? pair.fluxerChannelId : pair.discordChannelId;
+      const targetGuildId =
+        event.source.platform === 'discord' ? pair.fluxerGuildId : pair.discordGuildId;
 
       const jobData: DeliveryJobData = {
         event,

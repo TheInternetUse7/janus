@@ -4,7 +4,8 @@ import { createChildLogger } from './logger';
 
 const log = createChildLogger('database');
 
-const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/janus';
+const databaseUrl =
+  process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/janus';
 
 const adapter = new PrismaPg({ connectionString: databaseUrl });
 export const prisma = new PrismaClient({ adapter });

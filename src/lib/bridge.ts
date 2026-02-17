@@ -1,4 +1,3 @@
-
 import { EventEmitter } from 'events';
 import { prisma } from './database';
 import { createChildLogger } from './logger';
@@ -26,7 +25,12 @@ export interface BridgeEvents {
 }
 
 export class BridgeService extends EventEmitter {
-  async createBridge(discordChannelId: string, fluxerChannelId: string, discordGuildId: string, fluxerGuildId?: string): Promise<BridgePair> {
+  async createBridge(
+    discordChannelId: string,
+    fluxerChannelId: string,
+    discordGuildId: string,
+    fluxerGuildId?: string
+  ): Promise<BridgePair> {
     try {
       let discordWebhookId: string | null = null;
       let discordWebhookToken: string | null = null;
@@ -39,7 +43,10 @@ export class BridgeService extends EventEmitter {
         if (webhook) {
           discordWebhookId = webhook.id;
           discordWebhookToken = webhook.token;
-          log.info({ discordChannelId, webhookId: discordWebhookId }, 'Created Discord webhook for bridge');
+          log.info(
+            { discordChannelId, webhookId: discordWebhookId },
+            'Created Discord webhook for bridge'
+          );
         }
       }
 
@@ -49,7 +56,10 @@ export class BridgeService extends EventEmitter {
         if (webhook) {
           fluxerWebhookId = webhook.id;
           fluxerWebhookToken = webhook.token;
-          log.info({ fluxerChannelId, webhookId: fluxerWebhookId }, 'Created Fluxer webhook for bridge');
+          log.info(
+            { fluxerChannelId, webhookId: fluxerWebhookId },
+            'Created Fluxer webhook for bridge'
+          );
         }
       }
 
@@ -119,11 +129,13 @@ export class BridgeService extends EventEmitter {
     }
   }
 
-  async getBridgeByChannel(platform: 'discord' | 'fluxer', channelId: string): Promise<BridgePair | null> {
+  async getBridgeByChannel(
+    platform: 'discord' | 'fluxer',
+    channelId: string
+  ): Promise<BridgePair | null> {
     try {
-      const where = platform === 'discord'
-        ? { discordChannelId: channelId }
-        : { fluxerChannelId: channelId };
+      const where =
+        platform === 'discord' ? { discordChannelId: channelId } : { fluxerChannelId: channelId };
 
       return await prisma.bridgePair.findFirst({ where });
     } catch (error) {
@@ -158,13 +170,19 @@ export class BridgeService extends EventEmitter {
         if (!discordClient) {
           log.error({ bridgeId }, 'Discord client not available for webhook repair');
         } else {
-          const webhook = await discordClient.createWebhook(bridge.discordChannelId, 'Janus Bridge');
+          const webhook = await discordClient.createWebhook(
+            bridge.discordChannelId,
+            'Janus Bridge'
+          );
           if (webhook) {
             updateData.discordWebhookId = webhook.id;
             updateData.discordWebhookToken = webhook.token;
             log.info({ bridgeId, webhookId: webhook.id }, 'Repaired Discord webhook');
           } else {
-            log.error({ bridgeId, discordChannelId: bridge.discordChannelId }, 'Failed to create Discord webhook for bridge repair');
+            log.error(
+              { bridgeId, discordChannelId: bridge.discordChannelId },
+              'Failed to create Discord webhook for bridge repair'
+            );
           }
         }
       }
@@ -180,7 +198,10 @@ export class BridgeService extends EventEmitter {
             updateData.fluxerWebhookToken = webhook.token;
             log.info({ bridgeId, webhookId: webhook.id }, 'Repaired Fluxer webhook');
           } else {
-            log.error({ bridgeId, fluxerChannelId: bridge.fluxerChannelId }, 'Failed to create Fluxer webhook for bridge repair');
+            log.error(
+              { bridgeId, fluxerChannelId: bridge.fluxerChannelId },
+              'Failed to create Fluxer webhook for bridge repair'
+            );
           }
         }
       }
@@ -207,10 +228,7 @@ export class BridgeService extends EventEmitter {
     try {
       const bridges = await prisma.bridgePair.findMany({
         where: {
-          OR: [
-            { discordWebhookId: null },
-            { discordWebhookToken: null },
-          ],
+          OR: [{ discordWebhookId: null }, { discordWebhookToken: null }],
         },
       });
 

@@ -1,9 +1,7 @@
-import { Worker } from 'bullmq';
 import { createChildLogger } from './logger';
 import { prisma } from './database';
 import { DiscordClient } from '../platforms/discord/client';
 import { FluxerClient } from '../platforms/fluxer/client';
-import type { DeliveryJobData } from '../types/canonical';
 import { DiscordDeliveryWorker } from '../workers/discord-delivery';
 import { FluxerDeliveryWorker } from '../workers/fluxer-delivery';
 
@@ -24,7 +22,11 @@ export class DeliveryWorkerManager {
     this.fluxerClient = fluxerClient;
   }
 
-  async startForBridge(bridgeId: string, discordChannelId: string, fluxerChannelId: string): Promise<void> {
+  async startForBridge(
+    bridgeId: string,
+    discordChannelId: string,
+    fluxerChannelId: string
+  ): Promise<void> {
     if (this.workers.has(bridgeId)) {
       log.debug({ bridgeId }, 'Workers already exist for bridge');
       return;
@@ -67,7 +69,7 @@ export class DeliveryWorkerManager {
 
   async loadActiveBridges(): Promise<void> {
     log.info('Loading active bridges...');
-    
+
     const bridges = await prisma.bridgePair.findMany({
       where: { isActive: true },
     });
@@ -75,11 +77,7 @@ export class DeliveryWorkerManager {
     log.info({ count: bridges.length }, 'Found active bridges');
 
     for (const bridge of bridges) {
-      await this.startForBridge(
-        bridge.id,
-        bridge.discordChannelId,
-        bridge.fluxerChannelId
-      );
+      await this.startForBridge(bridge.id, bridge.discordChannelId, bridge.fluxerChannelId);
     }
 
     log.info('Finished loading bridges');
@@ -87,7 +85,7 @@ export class DeliveryWorkerManager {
 
   async closeAll(): Promise<void> {
     log.info('Closing all delivery workers...');
-    
+
     for (const [bridgeId] of this.workers) {
       await this.stopForBridge(bridgeId);
     }

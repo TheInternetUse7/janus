@@ -1,4 +1,12 @@
-import { Client, GatewayIntentBits, Events, Message, Guild, TextChannel, NewsChannel, Webhook } from 'discord.js';
+import {
+  Client,
+  GatewayIntentBits,
+  Events,
+  Message,
+  Guild,
+  TextChannel,
+  NewsChannel,
+} from 'discord.js';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../lib/logger';
 import { config } from '../../config';
@@ -49,17 +57,14 @@ export class DiscordClient extends EventEmitter {
   private setupEventHandlers(): void {
     this.client.once(Events.ClientReady, () => {
       this.ready = true;
-      log.info(
-        { guilds: this.client.guilds.cache.size },
-        'Discord client ready'
-      );
+      log.info({ guilds: this.client.guilds.cache.size }, 'Discord client ready');
     });
 
     this.client.on(Events.MessageCreate, (message: Message) => {
       if (message.author?.bot) return;
       if (!message.guildId) return;
 
-      const event = this.normalizeMessage(message, 'MSG_CREATE');
+      const event = this.normalizeMessage(message);
       this.emit('message', event);
     });
 
@@ -68,7 +73,7 @@ export class DiscordClient extends EventEmitter {
       if (!newMessage.guildId) return;
       if (!newMessage.content) return;
 
-      const event = this.normalizeMessage(newMessage as Message, 'MSG_UPDATE');
+      const event = this.normalizeMessage(newMessage as Message);
       this.emit('messageUpdate', event);
     });
 
@@ -109,18 +114,32 @@ export class DiscordClient extends EventEmitter {
             const discordGuildId = interaction.guildId;
 
             if (!discordGuildId) {
-              await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+              await interaction.reply({
+                content: 'This command can only be used in a server.',
+                ephemeral: true,
+              });
               return;
             }
 
             await bridgeService.createBridge(discordChannelId, fluxerChannelId, discordGuildId);
-            await interaction.reply({ content: `Bridge created between this channel and Fluxer channel ${fluxerChannelId}`, ephemeral: true });
+            await interaction.reply({
+              content: `Bridge created between this channel and Fluxer channel ${fluxerChannelId}`,
+              ephemeral: true,
+            });
           } else if (subcommand === 'list') {
             const bridges = await bridgeService.listBridges(interaction.guildId || undefined);
             if (bridges.length === 0) {
-              await interaction.reply({ content: 'No active bridges found for this server.', ephemeral: true });
+              await interaction.reply({
+                content: 'No active bridges found for this server.',
+                ephemeral: true,
+              });
             } else {
-              const list = bridges.map(b => `- Discord: <#${b.discordChannelId}> <-> Fluxer: ${b.fluxerChannelId} (ID: ${b.id})`).join('\n');
+              const list = bridges
+                .map(
+                  (b) =>
+                    `- Discord: <#${b.discordChannelId}> <-> Fluxer: ${b.fluxerChannelId} (ID: ${b.id})`
+                )
+                .join('\n');
               await interaction.reply({ content: `Active Bridges:\n${list}`, ephemeral: true });
             }
           } else if (subcommand === 'delete') {
@@ -131,14 +150,23 @@ export class DiscordClient extends EventEmitter {
             const bridgeId = interaction.options.getString('bridge_id', true);
             const active = interaction.options.getBoolean('active', true);
             await bridgeService.toggleBridge(bridgeId, active);
-            await interaction.reply({ content: `Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.`, ephemeral: true });
+            await interaction.reply({
+              content: `Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.`,
+              ephemeral: true,
+            });
           } else if (subcommand === 'repair') {
             const bridgeId = interaction.options.getString('bridge_id', true);
             const repairedBridge = await bridgeService.repairBridgeWebhook(bridgeId);
             if (repairedBridge) {
-              await interaction.reply({ content: `Bridge ${bridgeId} webhook repaired successfully.`, ephemeral: true });
+              await interaction.reply({
+                content: `Bridge ${bridgeId} webhook repaired successfully.`,
+                ephemeral: true,
+              });
             } else {
-              await interaction.reply({ content: `Failed to repair bridge ${bridgeId}. Check logs for details.`, ephemeral: true });
+              await interaction.reply({
+                content: `Failed to repair bridge ${bridgeId}. Check logs for details.`,
+                ephemeral: true,
+              });
             }
           }
         } catch (error: any) {
@@ -155,10 +183,7 @@ export class DiscordClient extends EventEmitter {
     });
   }
 
-  private normalizeMessage(
-    message: Message,
-    type: 'MSG_CREATE' | 'MSG_UPDATE'
-  ): DiscordMessageEvent {
+  private normalizeMessage(message: Message): DiscordMessageEvent {
     return {
       id: message.id,
       channelId: message.channelId,
@@ -190,10 +215,9 @@ export class DiscordClient extends EventEmitter {
     try {
       log.info('Started refreshing application (/) commands.');
 
-      await rest.put(
-        Routes.applicationCommands(this.client.user?.id || ''),
-        { body: [bridgeCommand.toJSON()] },
-      );
+      await rest.put(Routes.applicationCommands(this.client.user?.id || ''), {
+        body: [bridgeCommand.toJSON()],
+      });
 
       log.info('Successfully reloaded application (/) commands.');
     } catch (error) {
@@ -245,7 +269,10 @@ export class DiscordClient extends EventEmitter {
     }
   }
 
-  async createWebhook(channelId: string, name: string): Promise<{ id: string; token: string } | null> {
+  async createWebhook(
+    channelId: string,
+    name: string
+  ): Promise<{ id: string; token: string } | null> {
     try {
       const channel = await this.fetchChannel(channelId);
       if (!channel) return null;

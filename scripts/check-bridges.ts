@@ -7,12 +7,12 @@ const log = createChildLogger('check-bridges');
 async function checkBridges() {
   try {
     await connectDatabase();
-    
+
     const bridges = await prisma.bridgePair.findMany();
-    
+
     console.log('All bridges:');
     console.log(JSON.stringify(bridges, null, 2));
-    
+
     await disconnectDatabase();
     process.exit(0);
   } catch (error) {
@@ -22,4 +22,3 @@ async function checkBridges() {
 }
 
 checkBridges();
-

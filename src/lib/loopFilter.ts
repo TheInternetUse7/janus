@@ -8,9 +8,9 @@ const HASH_TTL_SECONDS = parseInt(process.env.LOOP_HASH_TTL || '10', 10);
 
 /**
  * The Janus Filter - SHA-256 based loop detection.
- * 
+ *
  * Prevents Bot A triggering Bot B triggering Bot A (The Infinite Echo).
- * 
+ *
  * Before sending a message, we compute a content hash and store it in Redis.
  * On ingest, if an incoming message matches a stored hash, we DROP it.
  */

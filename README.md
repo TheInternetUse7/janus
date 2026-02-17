@@ -27,6 +27,7 @@ cp .env.example .env
 ```
 
 Edit `.env`:
+
 ```env
 DISCORD_TOKEN=your_discord_bot_token
 FLUXER_TOKEN=your_fluxer_bot_token
@@ -37,12 +38,14 @@ REDIS_URL=redis://localhost:6379
 ### 3. Start PostgreSQL and Redis
 
 **Option A: Install locally**
+
 - [PostgreSQL](https://www.postgresql.org/download/)
 - [Redis](https://redis.io/download)
 
 **Option B: Use package managers**
 
 macOS:
+
 ```bash
 brew install postgresql@16 redis
 brew services start postgresql@16
@@ -50,6 +53,7 @@ brew services start redis
 ```
 
 Linux (Ubuntu):
+
 ```bash
 sudo apt install postgresql redis-server
 sudo systemctl start postgresql
@@ -57,6 +61,7 @@ sudo systemctl start redis-server
 ```
 
 Windows:
+
 - Use [PostgreSQL installer](https://www.postgresql.org/download/windows/)
 - Use [Memurai](https://www.memurai.com/) or [Redis for Windows](https://github.com/tporadowski/redis/releases)
 
@@ -104,10 +109,12 @@ npm run dev
 ### Getting Channel IDs
 
 **Discord:**
+
 1. User Settings → Advanced → Developer Mode: ON
 2. Right-click channel → "Copy Channel ID"
 
 **Fluxer:**
+
 1. User Settings → Advanced → Developer Mode: ON
 2. Right-click channel → "Copy Channel ID"
 
@@ -120,10 +127,10 @@ npm run dev
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DISCORD_TOKEN` | Yes | - | Discord Bot Token |
-| `FLUXER_TOKEN` | Yes | - | Fluxer Bot Token |
-| `DATABASE_URL` | Yes | - | PostgreSQL connection |
-| `REDIS_URL` | Yes | - | Redis connection |
-| `LOG_LEVEL` | No | `info` | Logging level |
+| Variable        | Required | Default | Description           |
+| --------------- | -------- | ------- | --------------------- |
+| `DISCORD_TOKEN` | Yes      | -       | Discord Bot Token     |
+| `FLUXER_TOKEN`  | Yes      | -       | Fluxer Bot Token      |
+| `DATABASE_URL`  | Yes      | -       | PostgreSQL connection |
+| `REDIS_URL`     | Yes      | -       | Redis connection      |
+| `LOG_LEVEL`     | No       | `info`  | Logging level         |

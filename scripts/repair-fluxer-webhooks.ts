@@ -40,7 +40,7 @@ async function main() {
 
     try {
       const webhook = await fluxerClient.createWebhook(bridge.fluxerChannelId, 'Janus Bridge');
-      
+
       if (!webhook) {
         console.log(`  ❌ Failed to create Fluxer webhook`);
         continue;
@@ -72,4 +72,3 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
-
