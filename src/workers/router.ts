@@ -38,7 +38,7 @@ export class RouterWorker {
       'Processing ingest job'
     );
 
-    const isLoop = await isLoopMessage(event.content, event.author.name);
+    const isLoop = await isLoopMessage(this.buildLoopInput(event), event.author.name);
     if (isLoop) {
       log.info({ messageId: event.source.messageId }, 'Dropping loop message');
       return;
@@ -97,6 +97,12 @@ export class RouterWorker {
         },
       });
     }
+  }
+
+  private buildLoopInput(event: IngestJobData['event']): string {
+    const safeContent = event.content ?? '';
+    const attachmentUrls = event.attachments.map((attachment) => attachment.url).join('\n');
+    return [safeContent, attachmentUrls].filter(Boolean).join('\n');
   }
 
   async close(): Promise<void> {

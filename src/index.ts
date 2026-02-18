@@ -17,6 +17,18 @@ import { bridgeService, setDiscordClient, setFluxerClient } from './lib/bridge';
 
 const log = createChildLogger('janus');
 
+function buildLoopInput(
+  content: string,
+  attachments: Array<{ url: string }> | undefined
+): string {
+  const safeContent = content ?? '';
+  const attachmentUrls = (attachments ?? [])
+    .map((attachment) => attachment.url)
+    .filter(Boolean)
+    .join('\n');
+  return [safeContent, attachmentUrls].filter(Boolean).join('\n');
+}
+
 class Janus {
   private discordClient: DiscordClient | null = null;
   private fluxerClient: FluxerClient | null = null;
@@ -84,7 +96,10 @@ class Janus {
     setDiscordClient(this.discordClient);
 
     this.discordClient.on('message', async (event) => {
-      const isLoop = await isLoopMessage(event.content, event.author.username);
+      const isLoop = await isLoopMessage(
+        buildLoopInput(event.content, event.attachments),
+        event.author.username
+      );
       if (isLoop) {
         log.debug({ messageId: event.id }, 'Skipping loop message from Discord');
         return;
@@ -126,7 +141,10 @@ class Janus {
     setFluxerClient(this.fluxerClient);
 
     this.fluxerClient.on('message', async (event) => {
-      const isLoop = await isLoopMessage(event.content, event.author.name);
+      const isLoop = await isLoopMessage(
+        buildLoopInput(event.content, event.attachments),
+        event.author.name
+      );
       if (isLoop) {
         log.debug({ messageId: event.id }, 'Skipping loop message from Fluxer');
         return;

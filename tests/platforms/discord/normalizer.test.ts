@@ -42,6 +42,7 @@ describe('discord normalizer', () => {
         channelId: 'chan-1',
         guildId: 'guild-1',
       },
+      reference: null,
       attachments: [
         {
           url: 'https://example.com/file.txt',

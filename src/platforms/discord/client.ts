@@ -6,6 +6,7 @@ import {
   Guild,
   TextChannel,
   NewsChannel,
+  AttachmentBuilder,
 } from 'discord.js';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../lib/logger';
@@ -27,6 +28,11 @@ export interface DiscordMessageEvent {
     bot: boolean;
     avatar: string | null;
   };
+  reference?: {
+    messageId: string;
+    channelId?: string;
+    guildId?: string | null;
+  } | null;
   attachments: Array<{
     url: string;
     filename: string;
@@ -195,6 +201,13 @@ export class DiscordClient extends EventEmitter {
         bot: message.author?.bot ?? false,
         avatar: message.author?.displayAvatarURL({ size: 128 }) ?? null,
       },
+      reference: message.reference?.messageId
+        ? {
+            messageId: message.reference.messageId,
+            channelId: message.reference.channelId ?? undefined,
+            guildId: message.reference.guildId ?? undefined,
+          }
+        : null,
       attachments: message.attachments.map((att) => ({
         url: att.url,
         filename: att.name ?? 'unknown',
@@ -290,16 +303,29 @@ export class DiscordClient extends EventEmitter {
     webhookToken: string,
     content: string,
     username: string,
-    avatarUrl: string | null
+    avatarUrl: string | null,
+    files?: Array<{ name: string; data: Buffer }>
   ): Promise<string | null> {
     try {
       const webhook = await this.client.fetchWebhook(webhookId, webhookToken);
       if (!webhook) return null;
 
+      log.debug(
+        {
+          webhookId,
+          hasContent: !!content,
+          fileCount: files?.length ?? 0,
+        },
+        'Sending webhook payload to Discord'
+      );
+      const filePayload = files?.map(
+        (file) => new AttachmentBuilder(file.data, { name: file.name })
+      );
       const message = await webhook.send({
         content,
         username,
         avatarURL: avatarUrl ?? undefined,
+        files: filePayload,
       });
 
       return message.id;

@@ -1,17 +1,23 @@
 import { Worker, Job } from 'bullmq';
+import axios from 'axios';
 import { createChildLogger } from '../lib/logger';
 import { prisma } from '../lib/database';
 import { checkRateLimit, getRateLimitDelay } from '../lib/rateLimiter';
 import { registerOutgoingHash } from '../lib/loopFilter';
 import { getRedisConnection } from '../lib/redis';
 import { FluxerClient } from '../platforms/fluxer/client';
-import type { DeliveryJobData } from '../types/canonical';
+import type { CanonicalAttachment, DeliveryJobData } from '../types/canonical';
 
 const log = createChildLogger('fluxer-delivery-worker');
 const EDIT_UPDATE_TTL_SECONDS = parseInt(
   process.env.FLUXER_EDIT_UPDATE_TTL_SECONDS || '604800',
   10
 );
+const ATTACHMENT_DOWNLOAD_TIMEOUT_MS = parseInt(
+  process.env.ATTACHMENT_DOWNLOAD_TIMEOUT_MS || '15000',
+  10
+);
+const ATTACHMENT_MAX_BYTES = parseInt(process.env.ATTACHMENT_MAX_BYTES || '26214400', 10); // 25MB
 
 export class FluxerDeliveryWorker {
   private worker: Worker<DeliveryJobData>;
@@ -41,7 +47,7 @@ export class FluxerDeliveryWorker {
   }
 
   async processJob(job: Job<DeliveryJobData>): Promise<void> {
-    const { event, bridgePairId, targetChannelId } = job.data;
+    const { event, bridgePairId, targetChannelId, syncUploads } = job.data;
 
     log.debug(
       { eventType: event.type, messageId: event.source.messageId, targetChannelId },
@@ -73,9 +79,11 @@ export class FluxerDeliveryWorker {
       await this.handleMessageCreate(
         event,
         targetChannelId,
+        bridge.fluxerGuildId,
         fluxerWebhookId,
         fluxerWebhookToken,
-        bridgePairId
+        bridgePairId,
+        syncUploads
       );
     } else if (event.type === 'MSG_UPDATE') {
       await this.handleMessageUpdate(
@@ -100,14 +108,58 @@ export class FluxerDeliveryWorker {
   private async handleMessageCreate(
     event: DeliveryJobData['event'],
     targetChannelId: string,
+    targetGuildId: string | null,
     fluxerWebhookId: string | null,
     fluxerWebhookToken: string | null,
-    bridgePairId: string
+    bridgePairId: string,
+    syncUploads: boolean
   ): Promise<void> {
-    if (!event.content?.trim()) {
-      log.debug({ messageId: event.source.messageId }, 'Skipping empty message');
+    let content = event.content ?? '';
+    const files: Array<{ name: string; data: Buffer }> = [];
+    const attachmentsForLinks: CanonicalAttachment[] = [];
+
+    if (event.attachments.length > 0) {
+      if (syncUploads) {
+        const { downloadedFiles, failedAttachments } = await this.downloadAttachments(
+          event.attachments
+        );
+        files.push(...downloadedFiles);
+        attachmentsForLinks.push(...failedAttachments);
+      } else {
+        attachmentsForLinks.push(...event.attachments);
+      }
+    }
+
+    if (attachmentsForLinks.length > 0) {
+      content = this.appendAttachmentLinks(content, attachmentsForLinks);
+    }
+
+    const replyLink = await this.resolveReplyLink(
+      bridgePairId,
+      event,
+      targetGuildId,
+      targetChannelId
+    );
+    content = this.appendReplyFooter(content, replyLink);
+    if (!content.trim() && files.length === 0) {
+      log.debug(
+        { messageId: event.source.messageId, hasReference: !!event.reference },
+        'Skipping empty Fluxer delivery message after reply/attachment processing'
+      );
       return;
     }
+
+    log.debug(
+      {
+        sourceMsgId: event.source.messageId,
+        replyRefId: event.reference?.messageId ?? null,
+        replyLinkResolved: !!replyLink,
+        attachmentCount: event.attachments.length,
+        uploadedFileCount: files.length,
+        hasContent: !!content.trim(),
+      },
+      'Prepared Fluxer delivery payload'
+    );
 
     // Use webhook if available, otherwise fall back to regular message
     if (fluxerWebhookId && fluxerWebhookToken) {
@@ -115,10 +167,11 @@ export class FluxerDeliveryWorker {
       const destMsgId = await this.fluxerClient.sendWebhook(
         fluxerWebhookId,
         fluxerWebhookToken,
-        event.content,
+        content,
         event.author.name,
         event.author.avatar,
-        targetChannelId // Pass channelId to enable message ID capture
+        targetChannelId, // Pass channelId to enable message ID capture
+        files
       );
 
       if (destMsgId) {
@@ -134,23 +187,36 @@ export class FluxerDeliveryWorker {
         });
       }
 
-      // Register the outgoing hash for loop detection
-      await registerOutgoingHash(event.content, event.author.name);
-      log.info(
-        { sourceMsgId: event.source.messageId, destMsgId },
-        'Message bridged to Fluxer via webhook'
-      );
+      if (destMsgId) {
+        // Register the outgoing hash for loop detection
+        await registerOutgoingHash(
+          this.buildHashContent(content, event.attachments),
+          event.author.name
+        );
+        log.info({ sourceMsgId: event.source.messageId, destMsgId }, 'Message bridged to Fluxer');
+      } else {
+        log.error(
+          {
+            sourceMsgId: event.source.messageId,
+            targetChannelId,
+            fileCount: files.length,
+            hasContent: !!content.trim(),
+          },
+          'Failed to bridge message to Fluxer'
+        );
+      }
     } else {
       log.warn(
         { bridgePairId },
         'Missing Fluxer webhook credentials, falling back to regular message'
       );
       const result = await this.fluxerClient.sendMessage(targetChannelId, {
-        content: event.content,
+        content,
         masquerade: {
           name: event.author.name,
           avatar: event.author.avatar || '',
         },
+        files,
       });
 
       const destMsgId = result?.id || null;
@@ -166,7 +232,10 @@ export class FluxerDeliveryWorker {
           },
         });
 
-        await registerOutgoingHash(event.content, event.author.name);
+        await registerOutgoingHash(
+          this.buildHashContent(content, event.attachments),
+          event.author.name
+        );
         log.info({ sourceMsgId: event.source.messageId, destMsgId }, 'Message bridged to Fluxer');
       }
     }
@@ -323,6 +392,95 @@ export class FluxerDeliveryWorker {
     sourceMsgId: string
   ): string {
     return `janus:fluxer:edit-update:${bridgePairId}:${sourcePlatform}:${sourceMsgId}`;
+  }
+
+  private async resolveReplyLink(
+    bridgePairId: string,
+    event: DeliveryJobData['event'],
+    targetGuildId: string | null,
+    targetChannelId: string
+  ): Promise<string | null> {
+    const replyToSourceMsgId = event.reference?.messageId;
+    if (!replyToSourceMsgId) return null;
+
+    const directMap = await prisma.messageMap.findFirst({
+      where: {
+        pairId: bridgePairId,
+        sourcePlatform: event.source.platform,
+        sourceMsgId: replyToSourceMsgId,
+        destPlatform: 'fluxer',
+      },
+    });
+    if (directMap) {
+      return this.buildFluxerMessageUrl(targetGuildId, targetChannelId, directMap.destMsgId);
+    }
+
+    const mirroredMap = await prisma.messageMap.findFirst({
+      where: {
+        pairId: bridgePairId,
+        destPlatform: event.source.platform,
+        destMsgId: replyToSourceMsgId,
+        sourcePlatform: 'fluxer',
+      },
+    });
+    if (!mirroredMap) return null;
+
+    return this.buildFluxerMessageUrl(targetGuildId, targetChannelId, mirroredMap.sourceMsgId);
+  }
+
+  private appendReplyFooter(content: string, replyLink: string | null): string {
+    if (!replyLink) return content;
+
+    const footer = `-# Reply to: [message link](${replyLink})`;
+    return content ? `${content}\n${footer}` : footer;
+  }
+
+  private appendAttachmentLinks(content: string, attachments: CanonicalAttachment[]): string {
+    if (attachments.length === 0) return content;
+
+    const lines = attachments
+      .map((att) => `-# [Attachment: ${att.filename}](${att.url})`)
+      .join('\n');
+    return content ? `${content}\n${lines}` : lines;
+  }
+
+  private async downloadAttachments(attachments: CanonicalAttachment[]): Promise<{
+    downloadedFiles: Array<{ name: string; data: Buffer }>;
+    failedAttachments: CanonicalAttachment[];
+  }> {
+    const downloadedFiles: Array<{ name: string; data: Buffer }> = [];
+    const failedAttachments: CanonicalAttachment[] = [];
+
+    for (const [index, attachment] of attachments.entries()) {
+      try {
+        const response = await axios.get<ArrayBuffer>(attachment.url, {
+          responseType: 'arraybuffer',
+          timeout: ATTACHMENT_DOWNLOAD_TIMEOUT_MS,
+          maxContentLength: ATTACHMENT_MAX_BYTES,
+          maxBodyLength: ATTACHMENT_MAX_BYTES,
+          validateStatus: (status) => status >= 200 && status < 300,
+        });
+        const fallbackName = `attachment-${index + 1}`;
+        downloadedFiles.push({
+          name: attachment.filename || fallbackName,
+          data: Buffer.from(response.data),
+        });
+      } catch (error) {
+        failedAttachments.push(attachment);
+        log.warn(
+          { attachmentUrl: attachment.url, attachmentName: attachment.filename, error },
+          'Failed to download attachment for Fluxer upload; using URL fallback'
+        );
+      }
+    }
+
+    return { downloadedFiles, failedAttachments };
+  }
+
+  private buildHashContent(content: string, attachments: CanonicalAttachment[]): string {
+    const attachmentUrls = attachments.map((att) => att.url).join('\n');
+    const combined = [content, attachmentUrls].filter(Boolean).join('\n');
+    return combined || content;
   }
 
   async close(): Promise<void> {

@@ -16,6 +16,11 @@ export interface FluxerMessage {
     avatar: string | null;
     bot: boolean;
   };
+  reference?: {
+    messageId: string;
+    channelId?: string;
+    guildId?: string | null;
+  } | null;
   attachments: Array<{
     url: string;
     filename: string;
@@ -58,17 +63,33 @@ export class FluxerClient extends EventEmitter {
 
     const getChannelId = (data: any) => data.channelId || data.channel_id;
     const getGuildId = (data: any) => data.guildId || data.guild_id;
+    const getMessageReference = (data: any) => {
+      const reference = data.messageReference || data.message_reference;
+      const messageId = reference?.messageId || reference?.message_id;
+      if (!messageId) return null;
+      return {
+        messageId,
+        channelId: reference.channelId || reference.channel_id || undefined,
+        guildId: reference.guildId || reference.guild_id || null,
+      };
+    };
+    const getAttachments = (data: any) =>
+      (data.attachments ?? []).map((att: any) => ({
+        url: att.url ?? '',
+        filename: att.filename ?? 'unknown',
+        contentType: att.content_type ?? null,
+        size: att.size ?? 0,
+      }));
 
     this.client.on(Events.MessageCreate, async (data: any) => {
       const channelId = getChannelId(data);
       const guildId = getGuildId(data);
+      const reference = getMessageReference(data);
+      const attachments = getAttachments(data);
+      const content = typeof data.content === 'string' ? data.content : '';
 
       // Check if this message matches a pending webhook send
-      const pendingKey = this.findPendingWebhookMessage(
-        channelId,
-        data.content,
-        data.author?.username
-      );
+      const pendingKey = this.findPendingWebhookMessage(channelId, content, data.author?.username);
       if (pendingKey) {
         const pending = this.pendingWebhookMessages.get(pendingKey);
         if (pending) {
@@ -82,31 +103,27 @@ export class FluxerClient extends EventEmitter {
       }
 
       if (data.author?.bot) return;
-      if (!data.content) return;
+      if (!content.trim() && attachments.length === 0 && !reference) return;
 
       const fluxerMessage: FluxerMessage = {
         id: data.id,
         channelId: channelId,
         guildId: guildId,
-        content: data.content,
+        content,
         author: {
           id: data.author?.id ?? 'unknown',
           name: data.author?.username ?? 'unknown',
           avatar: data.author?.avatar ?? data.author?.avatar_url ?? null,
           bot: data.author?.bot ?? false,
         },
-        attachments: (data.attachments ?? []).map((att: any) => ({
-          url: att.url ?? '',
-          filename: att.filename ?? 'unknown',
-          contentType: att.content_type ?? null,
-          size: att.size ?? 0,
-        })),
+        reference,
+        attachments,
         timestamp: data.timestamp ?? new Date().toISOString(),
         editedAt: data.edited_timestamp ?? null,
       };
 
-      if (data.content.startsWith('!bridge ')) {
-        const args = data.content.slice(8).trim().split(/\s+/);
+      if (content.startsWith('!bridge ')) {
+        const args = content.slice(8).trim().split(/\s+/);
         const command = args.shift()?.toLowerCase();
 
         try {
@@ -181,29 +198,28 @@ export class FluxerClient extends EventEmitter {
     });
 
     this.client.on(Events.MessageUpdate, async (_oldMessage: any, newMessage: any) => {
-      if (!newMessage?.content) return;
       if (newMessage.author?.bot) return;
 
       const channelId = getChannelId(newMessage);
       const guildId = getGuildId(newMessage);
+      const reference = getMessageReference(newMessage);
+      const attachments = getAttachments(newMessage);
+      const content = typeof newMessage.content === 'string' ? newMessage.content : '';
+      if (!content.trim() && attachments.length === 0 && !reference) return;
 
       const fluxerMessage: FluxerMessage = {
         id: newMessage.id,
         channelId: channelId,
         guildId: guildId,
-        content: newMessage.content,
+        content,
         author: {
           id: newMessage.author?.id ?? 'unknown',
           name: newMessage.author?.username ?? 'unknown',
           avatar: newMessage.author?.avatar ?? newMessage.author?.avatar_url ?? null,
           bot: newMessage.author?.bot ?? false,
         },
-        attachments: (newMessage.attachments ?? []).map((att: any) => ({
-          url: att.url ?? '',
-          filename: att.filename ?? 'unknown',
-          contentType: att.content_type ?? null,
-          size: att.size ?? 0,
-        })),
+        reference,
+        attachments,
         timestamp:
           newMessage.createdAt?.toISOString?.() ?? newMessage.timestamp ?? new Date().toISOString(),
         editedAt: newMessage.editedAt?.toISOString?.() ?? newMessage.edited_timestamp ?? null,
@@ -240,9 +256,16 @@ export class FluxerClient extends EventEmitter {
 
   async sendMessage(
     channelId: string,
-    payload: { content: string; masquerade?: { name: string; avatar: string } }
+    payload: {
+      content: string;
+      masquerade?: { name: string; avatar: string };
+      files?: Array<{ name: string; data: Buffer }>;
+    }
   ): Promise<{ id: string }> {
-    log.debug({ channelId, hasContent: !!payload.content }, 'Sending message to Fluxer');
+    log.debug(
+      { channelId, hasContent: !!payload.content, fileCount: payload.files?.length ?? 0 },
+      'Sending message to Fluxer'
+    );
 
     const messageData: Record<string, unknown> = {
       content: payload.content,
@@ -253,9 +276,25 @@ export class FluxerClient extends EventEmitter {
       messageData.avatar_url = payload.masquerade.avatar;
     }
 
-    const result = await this.client.rest.post(Routes.channelMessages(channelId), {
+    const postOptions: Record<string, unknown> = {
       body: messageData,
-    });
+    };
+    if (payload.files?.length) {
+      messageData.attachments = payload.files.map((file, index) => ({
+        id: index,
+        filename: file.name,
+      }));
+      postOptions.files = payload.files.map((file) => ({
+        name: file.name,
+        data: file.data,
+        filename: file.name,
+      }));
+    }
+
+    const result = await this.client.rest.post(
+      Routes.channelMessages(channelId),
+      postOptions as any
+    );
     return { id: (result as any).id };
   }
 
@@ -302,14 +341,15 @@ export class FluxerClient extends EventEmitter {
 
   private findPendingWebhookMessage(
     channelId: string,
-    content: string,
+    content: string | undefined,
     username: string
   ): string | null {
+    const normalizedContent = content ?? '';
     // Look for a pending webhook message that matches this channel, content, and username
     for (const [key, pending] of this.pendingWebhookMessages.entries()) {
       if (
         pending.channelId === channelId &&
-        pending.content === content &&
+        pending.content === normalizedContent &&
         pending.username === username
       ) {
         return key;
@@ -324,24 +364,47 @@ export class FluxerClient extends EventEmitter {
     content: string,
     username: string,
     avatarUrl: string | null,
-    channelId?: string
+    channelId?: string,
+    files?: Array<{ name: string; data: Buffer }>
   ): Promise<string | null> {
+    let pendingKey: string | null = null;
+    const normalizedContent = content.trim();
+
     try {
       const webhook = Webhook.fromToken(this.client, webhookId, webhookToken);
 
       const payload: any = {
-        content,
         username,
       };
+      if (normalizedContent) {
+        payload.content = content;
+      }
 
       if (avatarUrl) {
         payload.avatar_url = avatarUrl;
       }
+      if (files?.length) {
+        payload.files = files.map((file) => ({
+          name: file.name,
+          data: file.data,
+          filename: file.name,
+        }));
+      }
+      log.debug(
+        {
+          webhookId,
+          channelId,
+          hasContent: !!normalizedContent,
+          fileCount: files?.length ?? 0,
+        },
+        'Sending webhook payload to Fluxer'
+      );
 
       // Create a promise that will be resolved when we receive the message event
       const messageIdPromise = channelId
         ? new Promise<string | null>((resolve) => {
             const key = `${channelId}-${Date.now()}-${Math.random()}`;
+            pendingKey = key;
             const timeout = setTimeout(() => {
               this.pendingWebhookMessages.delete(key);
               log.warn({ webhookId, channelId }, 'Timeout waiting for webhook message ID');
@@ -350,7 +413,7 @@ export class FluxerClient extends EventEmitter {
 
             this.pendingWebhookMessages.set(key, {
               channelId,
-              content,
+              content: normalizedContent ? content : '',
               username,
               timestamp: Date.now(),
               resolve,
@@ -373,6 +436,13 @@ export class FluxerClient extends EventEmitter {
 
       return messageId;
     } catch (error) {
+      if (pendingKey) {
+        const pending = this.pendingWebhookMessages.get(pendingKey);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingWebhookMessages.delete(pendingKey);
+        }
+      }
       log.error({ webhookId, error }, 'Failed to send webhook');
       return null;
     }

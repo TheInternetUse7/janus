@@ -50,6 +50,13 @@ export function normalizeToCanonical(
       channelId: event.channelId,
       guildId: event.guildId ?? null,
     },
+    reference: event.reference
+      ? {
+          messageId: event.reference.messageId,
+          channelId: event.reference.channelId,
+          guildId: event.reference.guildId ?? null,
+        }
+      : null,
     attachments,
     timestamp: new Date(event.timestamp).getTime(),
   };

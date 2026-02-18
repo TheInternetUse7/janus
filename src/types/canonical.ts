@@ -26,11 +26,18 @@ export interface CanonicalSource {
   guildId: string | null;
 }
 
+export interface CanonicalReference {
+  messageId: string;
+  channelId?: string;
+  guildId?: string | null;
+}
+
 export interface CanonicalEvent {
   type: CanonicalEventType;
   content: string;
   author: CanonicalAuthor;
   source: CanonicalSource;
+  reference?: CanonicalReference | null;
   attachments: CanonicalAttachment[];
   timestamp: number; // Unix ms
 }
