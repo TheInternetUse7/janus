@@ -84,6 +84,7 @@ export class DiscordDeliveryWorker {
       await this.handleMessageUpdate(
         event,
         targetChannelId,
+        targetGuildId,
         discordWebhookId,
         discordWebhookToken,
         bridgePairId
@@ -186,6 +187,7 @@ export class DiscordDeliveryWorker {
   private async handleMessageUpdate(
     event: DeliveryJobData['event'],
     targetChannelId: string,
+    targetGuildId: string | null,
     webhookId: string,
     webhookToken: string,
     bridgePairId: string
@@ -203,11 +205,18 @@ export class DiscordDeliveryWorker {
       return;
     }
 
+    const replyLink = await this.resolveReplyLink(
+      bridgePairId,
+      event,
+      targetGuildId,
+      targetChannelId
+    );
+    const updatedContent = this.appendReplyFooter(event.content ?? '', replyLink);
     const success = await this.discordClient.editWebhookMessage(
       webhookId,
       webhookToken,
       messageMap.destMsgId,
-      event.content
+      updatedContent
     );
 
     if (success) {

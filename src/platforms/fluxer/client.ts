@@ -422,11 +422,24 @@ export class FluxerClient extends EventEmitter {
           })
         : Promise.resolve(null);
 
-      // Send the webhook (returns void)
-      await webhook.send(payload);
+      // Request the created message directly when possible.
+      // Keep pending matcher alive briefly to suppress self-ingest if gateway event arrives later.
+      const sentMessage = await webhook.send(payload, true);
+      const responseMessageId = sentMessage?.id ?? null;
+      if (responseMessageId && pendingKey) {
+        const key = pendingKey;
+        const pending = this.pendingWebhookMessages.get(pendingKey);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          pending.timeout = setTimeout(() => {
+            this.pendingWebhookMessages.delete(key);
+          }, 5000);
+          pending.resolve(responseMessageId);
+        }
+      }
 
-      // Wait for the message event to capture the ID
-      const messageId = await messageIdPromise;
+      // Fallback to gateway capture when execute response did not include a message.
+      const messageId = responseMessageId ?? (await messageIdPromise);
 
       if (messageId) {
         log.debug({ webhookId, username, messageId }, 'Webhook sent successfully with captured ID');

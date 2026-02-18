@@ -4,15 +4,10 @@ import { createChildLogger } from '../lib/logger';
 import { prisma } from '../lib/database';
 import { checkRateLimit, getRateLimitDelay } from '../lib/rateLimiter';
 import { registerOutgoingHash } from '../lib/loopFilter';
-import { getRedisConnection } from '../lib/redis';
 import { FluxerClient } from '../platforms/fluxer/client';
 import type { CanonicalAttachment, DeliveryJobData } from '../types/canonical';
 
 const log = createChildLogger('fluxer-delivery-worker');
-const EDIT_UPDATE_TTL_SECONDS = parseInt(
-  process.env.FLUXER_EDIT_UPDATE_TTL_SECONDS || '604800',
-  10
-);
 const ATTACHMENT_DOWNLOAD_TIMEOUT_MS = parseInt(
   process.env.ATTACHMENT_DOWNLOAD_TIMEOUT_MS || '15000',
   10
@@ -263,19 +258,17 @@ export class FluxerDeliveryWorker {
     }
 
     // Fluxer doesn't support editing webhook messages via API.
-    // Workaround: keep original message and post a new "edited content" message with a jump link.
+    // Workaround: post a new edited message, delete the old mirrored message, and repoint mapping.
+    // If the source message is itself a reply, preserve the reply footer consistently.
     if (fluxerWebhookId && fluxerWebhookToken) {
-      const fluxerMessageUrl = this.buildFluxerMessageUrl(
-        targetGuildId,
-        targetChannelId,
-        messageMap.destMsgId
-      );
-      const updateContent = this.buildWebhookEditWorkaroundContent(event.content, fluxerMessageUrl);
-      const updateTrackerKey = this.getEditUpdateTrackerKey(
+      const replyLink = await this.resolveReplyLink(
         bridgePairId,
-        event.source.platform,
-        event.source.messageId
+        event,
+        targetGuildId,
+        targetChannelId
       );
+      const updateContent = this.appendReplyFooter(event.content ?? '', replyLink);
+      const previousDestMsgId = messageMap.destMsgId;
 
       const updateMsgId = await this.fluxerClient.sendWebhook(
         fluxerWebhookId,
@@ -287,30 +280,35 @@ export class FluxerDeliveryWorker {
       );
 
       if (updateMsgId) {
-        const redis = getRedisConnection();
-        const previousUpdateMsgId = await redis.getset(updateTrackerKey, updateMsgId);
-        await redis.expire(updateTrackerKey, EDIT_UPDATE_TTL_SECONDS);
-
-        if (previousUpdateMsgId && previousUpdateMsgId !== updateMsgId) {
-          try {
-            await this.fluxerClient.deleteMessage(previousUpdateMsgId, targetChannelId);
-          } catch (error) {
-            log.warn(
-              { sourceMsgId: event.source.messageId, previousUpdateMsgId, error },
-              'Failed to delete previous Fluxer edit-update message'
-            );
+        try {
+          if (previousDestMsgId !== updateMsgId) {
+            await this.fluxerClient.deleteMessage(previousDestMsgId, targetChannelId);
           }
+        } catch (error) {
+          log.warn(
+            { sourceMsgId: event.source.messageId, previousDestMsgId, updateMsgId, error },
+            'Failed to delete previous mirrored Fluxer message during edit replacement'
+          );
         }
+        await prisma.messageMap.update({
+          where: { id: messageMap.id },
+          data: { destMsgId: updateMsgId },
+        });
+      } else {
+        log.error(
+          { sourceMsgId: event.source.messageId, previousDestMsgId },
+          'Failed to send replacement Fluxer edit message'
+        );
       }
 
       await registerOutgoingHash(updateContent, event.author.name);
       log.info(
         {
           sourceMsgId: event.source.messageId,
-          originalDestMsgId: messageMap.destMsgId,
+          previousDestMsgId: messageMap.destMsgId,
           updateDestMsgId: updateMsgId,
         },
-        'Message update mirrored on Fluxer (append+link workaround)'
+        'Message update mirrored on Fluxer (replace-by-send workaround)'
       );
     } else {
       await this.fluxerClient.editMessage(messageMap.destMsgId, targetChannelId, event.content);
@@ -329,13 +327,6 @@ export class FluxerDeliveryWorker {
     const guildSegment = guildId ?? '@me';
     const baseUrl = process.env.FLUXER_WEB_BASE_URL?.replace(/\/+$/, '') || 'https://fluxer.app';
     return `${baseUrl}/channels/${guildSegment}/${channelId}/${messageId}`;
-  }
-
-  private buildWebhookEditWorkaroundContent(content: string, fluxerMessageUrl: string): string {
-    const body = content?.trimEnd() ?? '';
-    const jumpLine = `-# [Jump to original message](${fluxerMessageUrl})`;
-
-    return body ? `${body}\n${jumpLine}` : jumpLine;
   }
 
   private async handleMessageDelete(
@@ -358,25 +349,6 @@ export class FluxerDeliveryWorker {
       return;
     }
 
-    const updateTrackerKey = this.getEditUpdateTrackerKey(
-      bridgePairId,
-      event.source.platform,
-      event.source.messageId
-    );
-    const redis = getRedisConnection();
-    const latestUpdateMsgId = await redis.get(updateTrackerKey);
-    if (latestUpdateMsgId) {
-      try {
-        await this.fluxerClient.deleteMessage(latestUpdateMsgId, targetChannelId);
-      } catch (error) {
-        log.warn(
-          { sourceMsgId: event.source.messageId, latestUpdateMsgId, error },
-          'Failed to delete latest Fluxer edit-update message during source delete sync'
-        );
-      }
-      await redis.del(updateTrackerKey);
-    }
-
     // Bot can delete any message in the channel with Manage Messages permission
     await this.fluxerClient.deleteMessage(messageMap.destMsgId, targetChannelId);
     await prisma.messageMap.delete({ where: { id: messageMap.id } });
@@ -386,20 +358,16 @@ export class FluxerDeliveryWorker {
     );
   }
 
-  private getEditUpdateTrackerKey(
-    bridgePairId: string,
-    sourcePlatform: string,
-    sourceMsgId: string
-  ): string {
-    return `janus:fluxer:edit-update:${bridgePairId}:${sourcePlatform}:${sourceMsgId}`;
-  }
-
   private async resolveReplyLink(
     bridgePairId: string,
     event: DeliveryJobData['event'],
     targetGuildId: string | null,
     targetChannelId: string
   ): Promise<string | null> {
+    // TODO: Reply links are resolved at mirror time only.
+    // If the referenced mirrored message is later replaced/deleted (e.g. Discord edit/delete mirrored to Fluxer),
+    // existing reply footers will point to a dead link until that reply message itself is mirrored again.
+    // A full fix needs reverse-reference tracking so downstream replies can be rewritten proactively.
     const replyToSourceMsgId = event.reference?.messageId;
     if (!replyToSourceMsgId) return null;
 
