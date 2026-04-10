@@ -42,10 +42,10 @@ export function getDeliveryQueue(platform: string, channelId: string): Queue<Del
       defaultJobOptions: {
         removeOnComplete: { count: 500 },
         removeOnFail: { count: 2000 },
-        attempts: 5,
+        attempts: 10,
         backoff: {
           type: 'exponential',
-          delay: 2000,
+          delay: 5000,
         },
       },
     });

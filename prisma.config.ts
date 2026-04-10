@@ -3,29 +3,27 @@ import fs from 'node:fs';
 import dotenv from 'dotenv';
 import { defineConfig } from 'prisma/config';
 
-function loadIfExists(filePath: string): void {
-  if (fs.existsSync(filePath)) {
-    dotenv.config({ path: filePath, override: false });
+function getDatabaseUrlFromEnvFile(): string {
+  const envFile = path.join(process.cwd(), '.env');
+  if (!fs.existsSync(envFile)) {
+    throw new Error('Missing .env file');
   }
+
+  const parsed = dotenv.parse(fs.readFileSync(envFile));
+  const databaseUrl = parsed.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    throw new Error('Missing DATABASE_URL in .env');
+  }
+
+  process.env.DATABASE_URL = databaseUrl;
+  return databaseUrl;
 }
 
-const cwd = process.cwd();
-const envFile = path.join(cwd, '.env');
-const envLocalFile = path.join(cwd, '.env.local');
-
-if (process.env.NODE_ENV === 'production') {
-  loadIfExists(envFile);
-} else {
-  loadIfExists(envLocalFile);
-  loadIfExists(envFile);
-}
+const databaseUrl = getDatabaseUrlFromEnvFile();
 
 export default defineConfig({
   schema: path.join(__dirname, 'prisma', 'schema.prisma'),
   datasource: {
-    url:
-      process.env.DIRECT_URL ||
-      process.env.DATABASE_URL ||
-      'postgresql://postgres:postgres@localhost:5432/janus',
+    url: databaseUrl,
   },
 });

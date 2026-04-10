@@ -189,17 +189,10 @@ export class FluxerDeliveryWorker {
           event.author.name
         );
         log.info({ sourceMsgId: event.source.messageId, destMsgId }, 'Message bridged to Fluxer');
-      } else {
-        log.error(
-          {
-            sourceMsgId: event.source.messageId,
-            targetChannelId,
-            fileCount: files.length,
-            hasContent: !!content.trim(),
-          },
-          'Failed to bridge message to Fluxer'
-        );
+        return;
       }
+
+      throw new Error(`Failed to deliver message to Fluxer for source ${event.source.messageId}`);
     } else {
       log.warn(
         { bridgePairId },
@@ -232,7 +225,10 @@ export class FluxerDeliveryWorker {
           event.author.name
         );
         log.info({ sourceMsgId: event.source.messageId, destMsgId }, 'Message bridged to Fluxer');
+        return;
       }
+
+      throw new Error(`Failed to deliver message to Fluxer for source ${event.source.messageId}`);
     }
   }
 
@@ -295,10 +291,7 @@ export class FluxerDeliveryWorker {
           data: { destMsgId: updateMsgId },
         });
       } else {
-        log.error(
-          { sourceMsgId: event.source.messageId, previousDestMsgId },
-          'Failed to send replacement Fluxer edit message'
-        );
+        throw new Error(`Failed to update message on Fluxer for source ${event.source.messageId}`);
       }
 
       await registerOutgoingHash(updateContent, event.author.name);

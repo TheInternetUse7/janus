@@ -66,8 +66,7 @@ export class DiscordDeliveryWorker {
     }
 
     if (!discordWebhookId || !discordWebhookToken) {
-      log.error({ bridgePairId }, 'Missing webhook credentials');
-      return;
+      throw new Error(`Missing Discord webhook credentials for bridge ${bridgePairId}`);
     }
 
     if (event.type === 'MSG_CREATE') {
@@ -181,7 +180,10 @@ export class DiscordDeliveryWorker {
         event.author.name
       );
       log.info({ sourceMsgId: event.source.messageId, destMsgId }, 'Message bridged to Discord');
+      return;
     }
+
+    throw new Error(`Failed to deliver message to Discord for source ${event.source.messageId}`);
   }
 
   private async handleMessageUpdate(
@@ -224,7 +226,10 @@ export class DiscordDeliveryWorker {
         { sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId },
         'Message updated on Discord'
       );
+      return;
     }
+
+    throw new Error(`Failed to update message on Discord for source ${event.source.messageId}`);
   }
 
   private async handleMessageDelete(
@@ -259,7 +264,10 @@ export class DiscordDeliveryWorker {
         { sourceMsgId: event.source.messageId, destMsgId: messageMap.destMsgId },
         'Message deleted on Discord'
       );
+      return;
     }
+
+    throw new Error(`Failed to delete message on Discord for source ${event.source.messageId}`);
   }
 
   async close(): Promise<void> {

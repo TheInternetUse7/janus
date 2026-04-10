@@ -3,14 +3,15 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install dependencies first for better layer caching
-COPY package*.json ./
+RUN corepack enable
+COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma
-RUN npm ci
+RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY . .
-RUN npm run prisma:generate && npm run build
+RUN pnpm prisma:generate && pnpm build
 
 ENV NODE_ENV=production
 
-CMD ["npm", "start"]
+CMD ["pnpm", "start"]

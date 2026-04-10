@@ -18,76 +18,33 @@ Bi-directional bridge between Discord and Fluxer.
 ```bash
 git clone https://github.com/TheInternetUse7/janus.git
 cd janus
-npm install
+corepack enable
+pnpm install
 ```
 
 ### 2. Configure Environment
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
-Edit `.env.local`:
-
-```env
-DISCORD_TOKEN=your_discord_bot_token
-FLUXER_TOKEN=your_fluxer_bot_token
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/janus
-REDIS_URL=redis://localhost:6379
-```
+Edit `.env`
 
 ### 3. Start PostgreSQL and Redis
 
-**Option A: Install locally**
-
-- [PostgreSQL](https://www.postgresql.org/download/)
-- [Redis](https://redis.io/download)
-
-**Option B: Use package managers**
-
-macOS:
-
-```bash
-brew install postgresql@16 redis
-brew services start postgresql@16
-brew services start redis
-```
-
-Linux (Ubuntu):
-
-```bash
-sudo apt install postgresql redis-server
-sudo systemctl start postgresql
-sudo systemctl start redis-server
-```
-
-Windows:
-
-- Use [PostgreSQL installer](https://www.postgresql.org/download/windows/)
-- Use [Memurai](https://www.memurai.com/) or [Redis for Windows](https://github.com/tporadowski/redis/releases)
-
 ### 4. Create Database
-
-```bash
-# Connect to PostgreSQL
-psql -U postgres
-
-# Create database
-CREATE DATABASE janus;
-\q
-```
 
 ### 5. Set Up Prisma
 
 ```bash
-npm run prisma:generate
-npm run prisma:push
+pnpm prisma:generate
+pnpm prisma:push
 ```
 
 ### 6. Start the Bridge
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ## Docker Setup
@@ -100,20 +57,19 @@ You can run Janus + PostgreSQL + Redis with Docker Compose.
 2. Start the stack:
 
 ```bash
-npm run docker:up
+pnpm docker:up
 ```
 
 3. Stop the stack:
 
 ```bash
-npm run docker:down
+pnpm docker:down
 ```
 
 Notes:
 
 - The compose stack sets `DATABASE_URL` and `REDIS_URL` to container service hosts automatically.
-- On startup, Janus runs `prisma generate` and `prisma push` before `npm start`.
-- Local development reads `.env.local` first, then `.env` for missing keys.
+- On startup, Janus runs `prisma generate` and `prisma push` before `pnpm start`.
 
 ## Getting Tokens
 
@@ -146,7 +102,7 @@ Notes:
 
 ## Testing
 
-1. Start Janus: `npm run dev`
+1. Start Janus: `pnpm dev`
 2. Join both Discord and Fluxer servers with the bot
 3. Send a message in the Discord channel
 4. It should appear in the linked Fluxer channel (and vice versa)

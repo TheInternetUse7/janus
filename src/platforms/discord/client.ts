@@ -7,6 +7,7 @@ import {
   TextChannel,
   NewsChannel,
   AttachmentBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../lib/logger';
@@ -122,23 +123,21 @@ export class DiscordClient extends EventEmitter {
             if (!discordGuildId) {
               await interaction.reply({
                 content: 'This command can only be used in a server.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
               });
               return;
             }
 
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             await bridgeService.createBridge(discordChannelId, fluxerChannelId, discordGuildId);
-            await interaction.reply({
-              content: `Bridge created between this channel and Fluxer channel ${fluxerChannelId}`,
-              ephemeral: true,
-            });
+            await interaction.editReply(
+              `Bridge created between this channel and Fluxer channel ${fluxerChannelId}`
+            );
           } else if (subcommand === 'list') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const bridges = await bridgeService.listBridges(interaction.guildId || undefined);
             if (bridges.length === 0) {
-              await interaction.reply({
-                content: 'No active bridges found for this server.',
-                ephemeral: true,
-              });
+              await interaction.editReply('No active bridges found for this server.');
             } else {
               const list = bridges
                 .map(
@@ -146,33 +145,29 @@ export class DiscordClient extends EventEmitter {
                     `- Discord: <#${b.discordChannelId}> <-> Fluxer: ${b.fluxerChannelId} (ID: ${b.id})`
                 )
                 .join('\n');
-              await interaction.reply({ content: `Active Bridges:\n${list}`, ephemeral: true });
+              await interaction.editReply(`Active Bridges:\n${list}`);
             }
           } else if (subcommand === 'delete') {
             const bridgeId = interaction.options.getString('bridge_id', true);
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             await bridgeService.deleteBridge(bridgeId);
-            await interaction.reply({ content: `Bridge ${bridgeId} deleted.`, ephemeral: true });
+            await interaction.editReply(`Bridge ${bridgeId} deleted.`);
           } else if (subcommand === 'toggle') {
             const bridgeId = interaction.options.getString('bridge_id', true);
             const active = interaction.options.getBoolean('active', true);
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             await bridgeService.toggleBridge(bridgeId, active);
-            await interaction.reply({
-              content: `Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.`,
-              ephemeral: true,
-            });
+            await interaction.editReply(`Bridge ${bridgeId} is now ${active ? 'active' : 'inactive'}.`);
           } else if (subcommand === 'repair') {
             const bridgeId = interaction.options.getString('bridge_id', true);
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const repairedBridge = await bridgeService.repairBridgeWebhook(bridgeId);
             if (repairedBridge) {
-              await interaction.reply({
-                content: `Bridge ${bridgeId} webhook repaired successfully.`,
-                ephemeral: true,
-              });
+              await interaction.editReply(`Bridge ${bridgeId} webhook repaired successfully.`);
             } else {
-              await interaction.reply({
-                content: `Failed to repair bridge ${bridgeId}. Check logs for details.`,
-                ephemeral: true,
-              });
+              await interaction.editReply(
+                `Failed to repair bridge ${bridgeId}. Check logs for details.`
+              );
             }
           }
         } catch (error: any) {
@@ -183,7 +178,11 @@ export class DiscordClient extends EventEmitter {
             content = error.message;
           }
 
-          await interaction.reply({ content, ephemeral: true });
+          if (interaction.deferred || interaction.replied) {
+            await interaction.editReply(content);
+          } else {
+            await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+          }
         }
       }
     });

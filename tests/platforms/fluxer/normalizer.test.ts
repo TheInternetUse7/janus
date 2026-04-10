@@ -52,4 +52,23 @@ describe('fluxer normalizer', () => {
 
     expect(output.author.avatar).toBeNull();
   });
+
+  it('maps fluxer reply metadata to canonical reference', () => {
+    const input: FluxerMessage = {
+      ...baseMessage(null),
+      reference: {
+        messageId: 'orig-321',
+        channelId: 'flux-chan-0',
+        guildId: 'flux-guild-0',
+      },
+    };
+
+    const output = normalizeToCanonical(input, 'MSG_UPDATE');
+
+    expect(output.reference).toEqual({
+      messageId: 'orig-321',
+      channelId: 'flux-chan-0',
+      guildId: 'flux-guild-0',
+    });
+  });
 });

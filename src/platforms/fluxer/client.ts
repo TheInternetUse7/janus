@@ -371,7 +371,9 @@ export class FluxerClient extends EventEmitter {
     const normalizedContent = content.trim();
 
     try {
-      const webhook = Webhook.fromToken(this.client, webhookId, webhookToken);
+      const webhook = Webhook.fromToken(this.client, webhookId, webhookToken, {
+        channelId,
+      });
 
       const payload: any = {
         username,
@@ -424,7 +426,7 @@ export class FluxerClient extends EventEmitter {
 
       // Request the created message directly when possible.
       // Keep pending matcher alive briefly to suppress self-ingest if gateway event arrives later.
-      const sentMessage = await webhook.send(payload, true);
+      const sentMessage = await webhook.send(payload);
       const responseMessageId = sentMessage?.id ?? null;
       if (responseMessageId && pendingKey) {
         const key = pendingKey;
@@ -456,7 +458,21 @@ export class FluxerClient extends EventEmitter {
           this.pendingWebhookMessages.delete(pendingKey);
         }
       }
-      log.error({ webhookId, error }, 'Failed to send webhook');
+      log.error(
+        {
+          webhookId,
+          channelId,
+          error:
+            error instanceof Error
+              ? {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                }
+              : error,
+        },
+        'Failed to send webhook'
+      );
       return null;
     }
   }

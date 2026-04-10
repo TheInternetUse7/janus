@@ -102,9 +102,14 @@ export class BridgeService extends EventEmitter {
 
   async deleteBridge(bridgeId: string): Promise<BridgePair> {
     try {
-      const bridge = await prisma.bridgePair.delete({
-        where: { id: bridgeId },
-      });
+      const [, bridge] = await prisma.$transaction([
+        prisma.messageMap.deleteMany({
+          where: { pairId: bridgeId },
+        }),
+        prisma.bridgePair.delete({
+          where: { id: bridgeId },
+        }),
+      ]);
       log.info({ bridgeId }, 'Bridge deleted');
       this.emit('bridge:deleted', bridgeId);
       return bridge;
