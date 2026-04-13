@@ -261,18 +261,18 @@ describe('fluxer delivery worker', () => {
     expect(sendWebhook.mock.calls[0][2]).toBe('hello');
   });
 
-  it('replaces old mirrored message on edits and preserves reply footer', async () => {
+  it('edits mirrored webhook messages in place on updates and preserves reply footer', async () => {
     mockMessageMapFindFirst
       .mockResolvedValueOnce({ id: 'map-1', destMsgId: 'fluxer-old-target-1' })
       .mockResolvedValueOnce({ destMsgId: 'fluxer-reply-dest-2' });
 
-    const sendWebhook = vi.fn().mockResolvedValue('fluxer-new-target-1');
-    const deleteMessage = vi.fn().mockResolvedValue(undefined);
+    const editWebhookMessage = vi.fn().mockResolvedValue(undefined);
     const client = {
-      sendWebhook,
+      sendWebhook: vi.fn(),
       sendMessage: vi.fn(),
       editMessage: vi.fn(),
-      deleteMessage,
+      editWebhookMessage,
+      deleteMessage: vi.fn(),
     };
 
     const worker = new FluxerDeliveryWorker(client as any, 'fluxer-target-channel');
@@ -292,15 +292,16 @@ describe('fluxer delivery worker', () => {
       })
     );
 
-    expect(sendWebhook).toHaveBeenCalledTimes(1);
-    expect(sendWebhook.mock.calls[0][2]).toBe(
+    expect(editWebhookMessage).toHaveBeenCalledTimes(1);
+    expect(editWebhookMessage).toHaveBeenCalledWith(
+      'fluxer-webhook-1',
+      'fluxer-token-1',
+      'fluxer-old-target-1',
       'edited content\n-# Reply to: [message link](https://fluxer.app/channels/fluxer-target-guild/fluxer-target-channel/fluxer-reply-dest-2)'
     );
-    expect(deleteMessage).toHaveBeenCalledWith('fluxer-old-target-1', 'fluxer-target-channel');
-    expect(mockMessageMapUpdate).toHaveBeenCalledWith({
-      where: { id: 'map-1' },
-      data: { destMsgId: 'fluxer-new-target-1' },
-    });
+    expect(client.sendWebhook).not.toHaveBeenCalled();
+    expect(client.deleteMessage).not.toHaveBeenCalled();
+    expect(mockMessageMapUpdate).not.toHaveBeenCalled();
   });
 
   it('skips truly empty create events', async () => {
@@ -353,14 +354,15 @@ describe('fluxer delivery worker', () => {
     ).rejects.toThrow('Failed to deliver message to Fluxer');
   });
 
-  it('throws when Fluxer replacement send for edits fails so BullMQ can retry', async () => {
+  it('throws when Fluxer webhook edits fail so BullMQ can retry', async () => {
     mockMessageMapFindFirst.mockResolvedValueOnce({ id: 'map-1', destMsgId: 'fluxer-old-target-1' });
 
-    const sendWebhook = vi.fn().mockResolvedValue(null);
+    const editWebhookMessage = vi.fn().mockRejectedValue(new Error('edit failed'));
     const client = {
-      sendWebhook,
+      sendWebhook: vi.fn(),
       sendMessage: vi.fn(),
       editMessage: vi.fn(),
+      editWebhookMessage,
       deleteMessage: vi.fn(),
     };
 
@@ -380,6 +382,6 @@ describe('fluxer delivery worker', () => {
           syncUploads: false,
         })
       )
-    ).rejects.toThrow('Failed to update message on Fluxer');
+    ).rejects.toThrow('edit failed');
   });
 });

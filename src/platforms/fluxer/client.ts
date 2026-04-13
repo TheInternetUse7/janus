@@ -305,6 +305,17 @@ export class FluxerClient extends EventEmitter {
     });
   }
 
+  async editWebhookMessage(
+    webhookId: string,
+    webhookToken: string,
+    messageId: string,
+    content: string
+  ): Promise<void> {
+    log.debug({ webhookId, messageId }, 'Editing webhook message on Fluxer');
+    const webhook = Webhook.fromToken(this.client, webhookId, webhookToken);
+    await webhook.editMessage(messageId, { content });
+  }
+
   async deleteMessage(messageId: string, channelId: string): Promise<void> {
     log.debug({ messageId, channelId }, 'Deleting message on Fluxer');
     await this.client.rest.delete(Routes.channelMessage(channelId, messageId));

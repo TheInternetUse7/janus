@@ -253,9 +253,6 @@ export class FluxerDeliveryWorker {
       return;
     }
 
-    // Fluxer doesn't support editing webhook messages via API.
-    // Workaround: post a new edited message, delete the old mirrored message, and repoint mapping.
-    // If the source message is itself a reply, preserve the reply footer consistently.
     if (fluxerWebhookId && fluxerWebhookToken) {
       const replyLink = await this.resolveReplyLink(
         bridgePairId,
@@ -264,44 +261,20 @@ export class FluxerDeliveryWorker {
         targetChannelId
       );
       const updateContent = this.appendReplyFooter(event.content ?? '', replyLink);
-      const previousDestMsgId = messageMap.destMsgId;
-
-      const updateMsgId = await this.fluxerClient.sendWebhook(
+      await this.fluxerClient.editWebhookMessage(
         fluxerWebhookId,
         fluxerWebhookToken,
-        updateContent,
-        event.author.name,
-        event.author.avatar,
-        targetChannelId
+        messageMap.destMsgId,
+        updateContent
       );
-
-      if (updateMsgId) {
-        try {
-          if (previousDestMsgId !== updateMsgId) {
-            await this.fluxerClient.deleteMessage(previousDestMsgId, targetChannelId);
-          }
-        } catch (error) {
-          log.warn(
-            { sourceMsgId: event.source.messageId, previousDestMsgId, updateMsgId, error },
-            'Failed to delete previous mirrored Fluxer message during edit replacement'
-          );
-        }
-        await prisma.messageMap.update({
-          where: { id: messageMap.id },
-          data: { destMsgId: updateMsgId },
-        });
-      } else {
-        throw new Error(`Failed to update message on Fluxer for source ${event.source.messageId}`);
-      }
 
       await registerOutgoingHash(updateContent, event.author.name);
       log.info(
         {
           sourceMsgId: event.source.messageId,
-          previousDestMsgId: messageMap.destMsgId,
-          updateDestMsgId: updateMsgId,
+          destMsgId: messageMap.destMsgId,
         },
-        'Message update mirrored on Fluxer (replace-by-send workaround)'
+        'Webhook message updated on Fluxer'
       );
     } else {
       await this.fluxerClient.editMessage(messageMap.destMsgId, targetChannelId, event.content);
