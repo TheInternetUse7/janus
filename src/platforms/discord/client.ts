@@ -18,6 +18,18 @@ import { REST, Routes } from 'discord.js';
 
 const log = createChildLogger('discord-client');
 
+export class DiscordApiError extends Error {
+  code?: number;
+  status?: number;
+
+  constructor(message: string, options?: { code?: number; status?: number }) {
+    super(message);
+    this.name = 'DiscordApiError';
+    this.code = options?.code;
+    this.status = options?.status;
+  }
+}
+
 export interface DiscordMessageEvent {
   id: string;
   channelId: string;
@@ -283,7 +295,8 @@ export class DiscordClient extends EventEmitter {
 
   async createWebhook(
     channelId: string,
-    name: string
+    name: string,
+    options?: { throwOnError?: boolean }
   ): Promise<{ id: string; token: string } | null> {
     try {
       const channel = await this.fetchChannel(channelId);
@@ -291,8 +304,14 @@ export class DiscordClient extends EventEmitter {
 
       const webhook = await channel.createWebhook({ name });
       return { id: webhook.id, token: webhook.token! };
-    } catch (error) {
+    } catch (error: any) {
       log.error({ channelId, error }, 'Failed to create webhook');
+      if (options?.throwOnError) {
+        throw new DiscordApiError(error?.message || 'Failed to create Discord webhook', {
+          code: error?.code,
+          status: error?.status,
+        });
+      }
       return null;
     }
   }

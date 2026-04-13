@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { prisma } from './database';
 import { createChildLogger } from './logger';
 import { BridgePair } from '@prisma/client';
-import { DiscordClient } from '../platforms/discord/client';
+import { DiscordApiError, DiscordClient } from '../platforms/discord/client';
 import { FluxerClient } from '../platforms/fluxer/client';
 
 const log = createChildLogger('bridge-service');
@@ -25,6 +25,13 @@ export interface BridgeEvents {
 }
 
 export class BridgeService extends EventEmitter {
+  private isDiscordMissingAccess(error: unknown): boolean {
+    return (
+      error instanceof DiscordApiError &&
+      (error.code === 50001 || error.status === 403)
+    );
+  }
+
   async createBridge(
     discordChannelId: string,
     fluxerChannelId: string,
@@ -175,19 +182,36 @@ export class BridgeService extends EventEmitter {
         if (!discordClient) {
           log.error({ bridgeId }, 'Discord client not available for webhook repair');
         } else {
-          const webhook = await discordClient.createWebhook(
-            bridge.discordChannelId,
-            'Janus Bridge'
-          );
-          if (webhook) {
-            updateData.discordWebhookId = webhook.id;
-            updateData.discordWebhookToken = webhook.token;
-            log.info({ bridgeId, webhookId: webhook.id }, 'Repaired Discord webhook');
-          } else {
-            log.error(
-              { bridgeId, discordChannelId: bridge.discordChannelId },
-              'Failed to create Discord webhook for bridge repair'
+          try {
+            const webhook = await discordClient.createWebhook(
+              bridge.discordChannelId,
+              'Janus Bridge',
+              { throwOnError: true }
             );
+            if (webhook) {
+              updateData.discordWebhookId = webhook.id;
+              updateData.discordWebhookToken = webhook.token;
+              log.info({ bridgeId, webhookId: webhook.id }, 'Repaired Discord webhook');
+            } else {
+              log.error(
+                { bridgeId, discordChannelId: bridge.discordChannelId },
+                'Failed to create Discord webhook for bridge repair'
+              );
+            }
+          } catch (error) {
+            if (this.isDiscordMissingAccess(error)) {
+              const inactiveBridge = await prisma.bridgePair.update({
+                where: { id: bridgeId },
+                data: { isActive: false },
+              });
+              log.warn(
+                { bridgeId, discordChannelId: bridge.discordChannelId },
+                'Deactivated bridge because the bot no longer has access to the Discord channel'
+              );
+              return inactiveBridge;
+            }
+
+            throw error;
           }
         }
       }
